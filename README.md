@@ -54,7 +54,7 @@ pip install docpipeline
 ou depuis les sources :
 
 ```bash
-git clone https://github.com/CHRISTMardochee/docpipeline.git
+git clone https://github.com/BosterJack/docpipeline.git
 cd docpipeline
 pip install -e .
 ```

@@ -55,9 +55,9 @@ all = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/CHRISTMardochee/docpipeline"
-Repository = "https://github.com/CHRISTMardochee/docpipeline"
-Issues = "https://github.com/CHRISTMardochee/docpipeline/issues"
+Homepage = "https://github.com/BosterJack/docpipeline"
+Repository = "https://github.com/BosterJack/docpipeline"
+Issues = "https://github.com/BosterJack/docpipeline/issues"
 
 [tool.setuptools.packages.find]
 where = ["."]
