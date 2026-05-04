@@ -53,12 +53,23 @@ Exemples :
     p_conv = sub.add_parser("convert", help="Convertir un document (auto-détection format)")
     p_conv.add_argument("input",  help="Fichier source")
     p_conv.add_argument("output", help="Fichier de sortie (extension détermine la conversion)")
-    p_conv.add_argument("--engine", choices=["smart", "text", "ocr", "hybrid"],
-                        help="Forcer un moteur de conversion (PDF→Word). "
-                             "'hybrid' = image fidèle + texte invisible "
-                             "(idéal pour brochures InDesign)")
+    p_conv.add_argument(
+        "--engine",
+        choices=["adobe", "msword", "libreoffice", "smart", "text", "ocr", "hybrid"],
+        help="Forcer un moteur de conversion (PDF→Word) :\n"
+             "  adobe       = qualité Acrobat Pro (cloud, gratuit jusqu'à 500/mois)\n"
+             "  msword      = Word PDF Reflow (Windows + Office)\n"
+             "  libreoffice = LibreOffice headless (multi-OS)\n"
+             "  smart       = PyMuPDF reconstruction (offline)\n"
+             "  text        = pdf2docx (PDFs Word natifs)\n"
+             "  ocr         = Tesseract pour PDFs scannés\n"
+             "  hybrid      = image + texte invisible (visuel parfait, non éditable)"
+    )
+    p_conv.add_argument("--prefer", choices=["balanced", "editable", "visual"],
+                        default="balanced",
+                        help="Stratégie : 'editable' évite hybrid, 'visual' privilégie hybrid")
     p_conv.add_argument("--dpi", type=int, default=200,
-                        help="Résolution rendu pour le mode hybride (défaut 200)")
+                        help="Résolution rendu mode hybride (défaut 200)")
     p_conv.add_argument("--lang", default="fra+eng",
                         help="Langues OCR (défaut : fra+eng)")
     p_conv.add_argument("--no-enhance", action="store_true",
@@ -156,9 +167,26 @@ def _cmd_convert(args) -> int:
         options["enhance"] = False
     if hasattr(args, "dpi"):
         options["hybrid_dpi"] = args.dpi
+    if hasattr(args, "prefer") and args.prefer:
+        options["prefer"] = args.prefer
 
-    output = convert(args.input, args.output, **options)
-    print(f"✓ Conversion terminée : {output}")
+    # On utilise la fonction interne pour récupérer les métadonnées
+    src_ext = Path(args.input).suffix.lower()
+    dst_ext = Path(args.output).suffix.lower()
+
+    if src_ext == ".pdf" and dst_ext == ".docx":
+        from .conversion import convert_pdf_to_word
+        result = convert_pdf_to_word(args.input, args.output, **options)
+        print(f"✓ Conversion terminée : {result.output_path}")
+        print(f"  Moteur          : {result.engine_used}")
+        print(f"  Catégorie PDF   : {result.category.value} ({result.confidence:.0%})")
+        print(f"  Éditable        : {'oui' if result.editable else 'non (image)'}")
+        print(f"  Fidélité visuel : {result.visual_fidelity}")
+        for w in result.warnings:
+            print(f"  ⚠ {w}")
+    else:
+        output = convert(args.input, args.output, **options)
+        print(f"✓ Conversion terminée : {output}")
     return 0
 
 

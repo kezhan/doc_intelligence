@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "docpipeline"
-version = "0.2.2"
+version = "0.3.0"
 description = "Pipeline modulaire de traitement documentaire IA — 4 briques (Parsing, Retrieval, Question, Génération) × N formats."
 readme = "README.md"
 license = { text = "MIT" }
@@ -45,14 +45,16 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-llm = ["openai>=1.0", "anthropic>=0.25"]
-ocr = ["pytesseract>=0.3"]
+llm        = ["openai>=1.0", "anthropic>=0.25"]
+ocr        = ["pytesseract>=0.3"]
 ocr-paddle = ["paddleocr>=2.7"]
-dev = ["pytest>=8.0", "pytest-cov", "ruff", "mypy", "build", "twine"]
+msword     = ["pywin32>=306;platform_system=='Windows'"]
+dev        = ["pytest>=8.0", "pytest-cov", "ruff", "mypy", "build", "twine"]
 all = [
     "openai>=1.0",
     "anthropic>=0.25",
     "pytesseract>=0.3",
+    "pywin32>=306;platform_system=='Windows'",
 ]
 
 [project.scripts]
