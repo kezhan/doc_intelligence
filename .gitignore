@@ -1,0 +1,49 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+*.egg
+.eggs/
+wheels/
+share/python-wheels/
+
+# Virtual environments
+venv/
+env/
+.venv/
+.env
+
+# Tests / coverage
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*~
+.DS_Store
+
+# Generated test outputs
+tests/fixtures/*_converted.docx
+tests/fixtures/*_text.docx
+tests/fixtures/out_*.docx
+tests/fixtures/*.db
+tests/fixtures/glossaire.json
+tests/fixtures/sinistres.db
+
+# Project artefacts
+extracted.txt
+_repo_src/
+
+# Type checker
+.mypy_cache/
+.ruff_cache/

@@ -1,0 +1,23 @@
+# Cœur — extraction et manipulation documents (sans LLM)
+pymupdf>=1.23
+pdfplumber>=0.10
+pdf2docx>=0.5
+python-docx>=1.1
+pandas>=2.1
+openpyxl>=3.1
+pillow>=10.0
+lxml>=5.0
+numpy>=1.26
+scikit-learn>=1.3
+
+# OCR (optionnel, pour PDFs scannés)
+pytesseract>=0.3
+
+# Brique génération (LLM — pour traduction et résumé seulement)
+openai>=1.0
+anthropic>=0.25
+langdetect>=1.0
+
+# Tests
+pytest>=8.0
+pytest-cov
