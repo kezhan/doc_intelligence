@@ -53,8 +53,12 @@ Exemples :
     p_conv = sub.add_parser("convert", help="Convertir un document (auto-détection format)")
     p_conv.add_argument("input",  help="Fichier source")
     p_conv.add_argument("output", help="Fichier de sortie (extension détermine la conversion)")
-    p_conv.add_argument("--engine", choices=["smart", "text", "ocr"],
-                        help="Forcer un moteur de conversion (PDF→Word)")
+    p_conv.add_argument("--engine", choices=["smart", "text", "ocr", "hybrid"],
+                        help="Forcer un moteur de conversion (PDF→Word). "
+                             "'hybrid' = image fidèle + texte invisible "
+                             "(idéal pour brochures InDesign)")
+    p_conv.add_argument("--dpi", type=int, default=200,
+                        help="Résolution rendu pour le mode hybride (défaut 200)")
     p_conv.add_argument("--lang", default="fra+eng",
                         help="Langues OCR (défaut : fra+eng)")
     p_conv.add_argument("--no-enhance", action="store_true",
@@ -150,6 +154,8 @@ def _cmd_convert(args) -> int:
         options["ocr_lang"] = args.lang
     if args.no_enhance:
         options["enhance"] = False
+    if hasattr(args, "dpi"):
+        options["hybrid_dpi"] = args.dpi
 
     output = convert(args.input, args.output, **options)
     print(f"✓ Conversion terminée : {output}")
