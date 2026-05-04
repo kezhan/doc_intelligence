@@ -90,7 +90,13 @@ class LLMClient:
         try:
             from openai import OpenAI
         except ImportError as exc:
-            raise ImportError("Install openai: pip install openai") from exc
+            raise ImportError(
+                "La brique LLM n'est pas installée. Pour l'activer :\n"
+                "    pip install docpipeline[llm]\n"
+                "Puis exportez votre clé API : "
+                "$env:OPENAI_API_KEY = 'sk-...'  (PowerShell) "
+                "ou export OPENAI_API_KEY=sk-... (bash)"
+            ) from exc
 
         api_key = cfg.extra.get("api_key") or os.environ.get("OPENAI_API_KEY")
         client = OpenAI(api_key=api_key)
@@ -121,7 +127,13 @@ class LLMClient:
         try:
             import anthropic
         except ImportError as exc:
-            raise ImportError("Install anthropic: pip install anthropic") from exc
+            raise ImportError(
+                "La brique LLM n'est pas installée. Pour l'activer :\n"
+                "    pip install docpipeline[llm]\n"
+                "Puis exportez votre clé API : "
+                "$env:ANTHROPIC_API_KEY = 'sk-ant-...'  (PowerShell) "
+                "ou export ANTHROPIC_API_KEY=sk-ant-... (bash)"
+            ) from exc
 
         api_key = cfg.extra.get("api_key") or os.environ.get("ANTHROPIC_API_KEY")
         client = anthropic.Anthropic(api_key=api_key)

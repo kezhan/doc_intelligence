@@ -33,7 +33,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-__version__ = "0.2.0"
+__version__ = "0.2.1"
 
 # Re-export des briques principales pour usage direct
 from .parsing.pdf import classify_pdf as _classify_pdf
