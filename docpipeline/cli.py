@@ -55,10 +55,11 @@ Exemples :
     p_conv.add_argument("output", help="Fichier de sortie (extension détermine la conversion)")
     p_conv.add_argument(
         "--engine",
-        choices=["adobe", "msword", "libreoffice", "smart", "text", "ocr", "hybrid"],
+        choices=["adobe", "msword", "docling", "libreoffice", "smart", "text", "ocr", "hybrid"],
         help="Forcer un moteur de conversion (PDF→Word) :\n"
              "  adobe       = qualité Acrobat Pro (cloud, gratuit jusqu'à 500/mois)\n"
              "  msword      = Word PDF Reflow (Windows + Office)\n"
+             "  docling     = IBM ML (gratuit, offline, ~80% qualité Adobe)\n"
              "  libreoffice = LibreOffice headless (multi-OS)\n"
              "  smart       = PyMuPDF reconstruction (offline)\n"
              "  text        = pdf2docx (PDFs Word natifs)\n"

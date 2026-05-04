@@ -43,16 +43,17 @@ docpipeline dedupe-images doc1.pdf doc2.pdf --logos
 
 ---
 
-## 🏆 Conversion PDF → Word (v0.3.0) — qualité Acrobat Pro
+## 🏆 Conversion PDF → Word (v0.4.0) — qualité Acrobat Pro
 
 Le besoin métier le plus difficile : **conserver le visuel du PDF tout en gardant le texte éditable**, y compris pour les PDFs complexes type brochure InDesign / plaquette commerciale / rapport mis en page.
 
-`docpipeline` fournit **7 moteurs** sélectionnés automatiquement selon la classification du PDF et la disponibilité des outils :
+`docpipeline` fournit **8 moteurs** sélectionnés automatiquement selon la classification du PDF et la disponibilité des outils :
 
 | Moteur | Fidélité | Éditable | Coût | Prérequis |
 |---|:---:|:---:|---|---|
 | **`adobe`** | ⭐⭐⭐⭐⭐ | ✅ | 500 conv./mois gratuites | Compte [Adobe Developer](https://developer.adobe.com/document-services/) |
 | **`msword`** | ⭐⭐⭐⭐ | ✅ | Gratuit si Office installé | Windows + MS Office |
+| **`docling`** | ⭐⭐⭐⭐ | ✅ | 100% gratuit + offline | `pip install docling` (~500 Mo modèles) |
 | **`libreoffice`** | ⭐⭐⭐ | ✅ | 100% gratuit | LibreOffice installé |
 | **`text`** (pdf2docx) | ⭐⭐⭐ | ✅ | 100% gratuit | (par défaut) |
 | **`smart`** (PyMuPDF) | ⭐⭐ | ✅ | 100% gratuit | (par défaut) |
@@ -64,8 +65,13 @@ Le besoin métier le plus difficile : **conserver le visuel du PDF tout en garda
 ```
 PDF Word natif        → text (pdf2docx, optimal et rapide)
 PDF scanné            → ocr  (Tesseract / PaddleOCR)
-PDF design complexe   → adobe → msword → libreoffice → smart → hybrid
+PDF design complexe   → adobe → msword → docling → libreoffice → smart → hybrid
 ```
+
+> **Docling = la meilleure alternative gratuite à Adobe.** Modèles ML pré-entraînés
+> par IBM Research, fonctionne 100% offline après le 1er téléchargement. Qualité
+> ~80-85% de celle d'Adobe sur les PDFs complexes (InDesign, brochures).
+> Activation : `pip install docpipeline[docling]`.
 
 L'utilisateur reçoit toujours un avertissement clair indiquant **quoi installer** pour améliorer le résultat.
 

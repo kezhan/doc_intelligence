@@ -5,6 +5,7 @@ Sources personnalisées depuis https://github.com/CHRISTMardochee/pdf2word.
 """
 
 from ._adobe_converter import AdobeConverter
+from ._docling_converter import DoclingConverter
 from ._docx_enhancer import DocxEnhancer
 from ._hybrid_converter import HybridConverter
 from ._libreoffice_converter import LibreOfficeConverter
@@ -24,5 +25,6 @@ __all__ = [
     "MSWordConverter",
     "LibreOfficeConverter",
     "AdobeConverter",
+    "DoclingConverter",
     "DocxEnhancer",
 ]

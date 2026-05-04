@@ -31,6 +31,7 @@ import fitz  # PyMuPDF
 
 from ..parsing.pdf.classifier import PDFCategory, classify_pdf
 from ._adobe_converter import AdobeConverter
+from ._docling_converter import DoclingConverter
 from ._docx_enhancer import DocxEnhancer
 from ._hybrid_converter import HybridConverter
 from ._libreoffice_converter import LibreOfficeConverter, _find_libreoffice
@@ -101,7 +102,7 @@ def convert_pdf_to_word(
     else:
         engine_name = _select_engine(pdf_path, classification.category, prefer, warnings)
 
-    if classification.category == PDFCategory.SCANNED and engine_name not in ("ocr", "hybrid", "adobe"):
+    if classification.category == PDFCategory.SCANNED and engine_name not in ("ocr", "hybrid", "adobe", "docling"):
         warnings.append(
             "PDF scanné détecté : préférez --engine ocr (OCR local) "
             "ou --engine adobe (OCR cloud + édition)."
@@ -114,8 +115,8 @@ def convert_pdf_to_word(
     )
 
     enhanced = False
-    if enhance and engine_name not in ("hybrid", "adobe", "msword", "libreoffice"):
-        # Adobe/MSWord/LibreOffice produisent déjà du DOCX propre — pas besoin
+    if enhance and engine_name not in ("hybrid", "adobe", "msword", "libreoffice", "docling"):
+        # Adobe/MSWord/LibreOffice/Docling produisent déjà du DOCX propre
         try:
             DocxEnhancer().enhance(output_path, source_pdf_path=pdf_path)
             enhanced = True
@@ -165,7 +166,7 @@ def _select_engine(
         return "smart"
 
     # PDF design complexe (InDesign, brochure...) — viser fidélité ET éditabilité
-    # Cascade : Adobe → MSWord → LibreOffice → fallback selon prefer
+    # Cascade : Adobe → MSWord → Docling → LibreOffice → fallback selon prefer
     if _adobe_available():
         warnings.append(
             "Layout complexe détecté → moteur Adobe (qualité Acrobat Pro)."
@@ -179,11 +180,17 @@ def _select_engine(
         )
         return "msword"
 
+    if _docling_available():
+        warnings.append(
+            "Layout complexe détecté → moteur Docling (IBM ML, gratuit + offline). "
+            "Pour une qualité supérieure : configurez ADOBE_CLIENT_ID/SECRET."
+        )
+        return "docling"
+
     if _libreoffice_available():
         warnings.append(
             "Layout complexe détecté → moteur LibreOffice. "
-            "Pour une meilleure qualité : installez MS Office (Windows) "
-            "ou configurez ADOBE_CLIENT_ID/SECRET."
+            "Pour une meilleure qualité gratuite : pip install docling"
         )
         return "libreoffice"
 
@@ -236,6 +243,14 @@ def _msword_available() -> bool:
         return False
 
 
+def _docling_available() -> bool:
+    try:
+        import docling  # noqa: F401
+        return True
+    except ImportError:
+        return False
+
+
 def _libreoffice_available() -> bool:
     return _find_libreoffice() is not None
 
@@ -262,6 +277,10 @@ def _run_engine(
     if engine == "msword":
         MSWordConverter().convert(pdf_path, output_path)
         return "MSWordConverter (PDF Reflow natif)", True, "high"
+
+    if engine == "docling":
+        DoclingConverter().convert(pdf_path, output_path)
+        return "DoclingConverter (IBM ML, offline)", True, "high"
 
     if engine == "libreoffice":
         LibreOfficeConverter().convert(pdf_path, output_path)
