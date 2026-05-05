@@ -80,8 +80,9 @@ class TestConvertPdfToWord:
         assert "Smart" in result.engine_used
 
     def test_enhance_flag_applies_post_processing(self, tmp_path):
+        # Force smart pour tester l'enhancement (Adobe/MSWord/etc. n'en ont pas besoin)
         out = tmp_path / "out.docx"
-        result = convert_pdf_to_word(PDF_FILE, out, enhance=True)
+        result = convert_pdf_to_word(PDF_FILE, out, enhance=True, force_engine="smart")
         assert result.enhanced is True
 
 
