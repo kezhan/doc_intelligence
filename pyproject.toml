@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "docpipeline"
-version = "0.5.0"
+version = "0.5.1"
 description = "Pipeline modulaire de traitement documentaire IA — 4 briques (Parsing, Retrieval, Question, Génération) × N formats."
 readme = "README.md"
 license = { text = "MIT" }

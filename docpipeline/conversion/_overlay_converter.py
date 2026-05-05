@@ -193,97 +193,21 @@ class OverlayConverter:
         page_rect: fitz.Rect,
         page_num: int,
     ) -> None:
-        """Insère l'image de la page en arrière-plan ancré (behind text)."""
-        # Paragraphe support pour l'ancrage
+        """
+        Insère l'image de la page en arrière-plan via une image inline simple.
+
+        On utilise une approche directe : un paragraphe contenant juste
+        l'image inline aux dimensions de la page. Les zones de texte VML
+        positionnées en absolu apparaîtront par-dessus visuellement.
+        """
         para = doc.add_paragraph()
         para.paragraph_format.space_before = Pt(0)
         para.paragraph_format.space_after  = Pt(0)
         para.paragraph_format.line_spacing = 1.0
         run  = para.add_run()
 
-        # Insertion image inline puis transformation en anchored behind
-        inline_shape = run.add_picture(img_path,
-                                        width=Inches(page_rect.width / 72.0))
-
-        # Récupérer l'élément <w:drawing> et transformer inline → anchor
-        drawing = run._element.findall(qn("w:drawing"))
-        if not drawing:
-            return
-        drawing_el = drawing[0]
-        inline_el  = drawing_el.find(qn("wp:inline"))
-        if inline_el is None:
-            # Compatibilité avec différents schémas
-            for child in drawing_el:
-                if child.tag.endswith("inline"):
-                    inline_el = child
-                    break
-        if inline_el is None:
-            return
-
-        # Construire un <wp:anchor> "behind text"
-        page_w_emu = int(page_rect.width  / 72.0 * EMU_PER_IN)
-        page_h_emu = int(page_rect.height / 72.0 * EMU_PER_IN)
-
-        anchor = OxmlElement("wp:anchor")
-        anchor.set("distT", "0")
-        anchor.set("distB", "0")
-        anchor.set("distL", "0")
-        anchor.set("distR", "0")
-        anchor.set("simplePos", "0")
-        anchor.set("relativeHeight", "1")
-        anchor.set("behindDoc", "1")  # ⭐ derrière le texte
-        anchor.set("locked", "0")
-        anchor.set("layoutInCell", "1")
-        anchor.set("allowOverlap", "1")
-
-        # simplePos (requis même si simplePos=0)
-        sp = OxmlElement("wp:simplePos")
-        sp.set("x", "0"); sp.set("y", "0")
-        anchor.append(sp)
-
-        # Position H/V relatives à la page
-        ph = OxmlElement("wp:positionH")
-        ph.set("relativeFrom", "page")
-        ph_off = OxmlElement("wp:posOffset")
-        ph_off.text = "0"
-        ph.append(ph_off)
-        anchor.append(ph)
-
-        pv = OxmlElement("wp:positionV")
-        pv.set("relativeFrom", "page")
-        pv_off = OxmlElement("wp:posOffset")
-        pv_off.text = "0"
-        pv.append(pv_off)
-        anchor.append(pv)
-
-        # Extent (taille image = taille page)
-        extent = OxmlElement("wp:extent")
-        extent.set("cx", str(page_w_emu))
-        extent.set("cy", str(page_h_emu))
-        anchor.append(extent)
-
-        # effectExtent
-        ee = OxmlElement("wp:effectExtent")
-        ee.set("l", "0"); ee.set("t", "0"); ee.set("r", "0"); ee.set("b", "0")
-        anchor.append(ee)
-
-        # wrapNone (pas de wrap, l'image est libre)
-        anchor.append(OxmlElement("wp:wrapNone"))
-
-        # Copier docPr et graphic depuis l'inline
-        for tag_name in ("wp:docPr", "wp:cNvGraphicFramePr", "a:graphic"):
-            child = self._find_first(inline_el, tag_name)
-            if child is not None:
-                anchor.append(child)
-
-        # Mettre à jour la taille du graphic xfrm si présent
-        for ext in anchor.findall(f".//{{{_A_NS}}}ext"):
-            ext.set("cx", str(page_w_emu))
-            ext.set("cy", str(page_h_emu))
-
-        # Remplacer inline par anchor
-        drawing_el.remove(inline_el)
-        drawing_el.append(anchor)
+        # Image inline aux dimensions exactes de la page
+        run.add_picture(img_path, width=Inches(page_rect.width / 72.0))
 
     # ── Zone de texte flottante par span ──────────────────────────────────────
 
@@ -337,81 +261,64 @@ class OverlayConverter:
         text: str, font_size_pt: float, bold: bool, italic: bool,
         color_hex: str, font_name: str, unique_id: int,
     ) -> str:
-        """Génère le XML OOXML pour une zone de texte flottante ancrée."""
-        # Échapper le texte pour XML
+        """
+        Génère le XML pour une zone de texte flottante ancrée (VML).
+
+        On utilise VML (w:pict + v:shape) plutôt que DrawingML (mc:AlternateContent)
+        car c'est plus robuste et accepté par toutes les versions de Word
+        sans schéma de fallback complexe.
+        """
         text_esc = (
             text.replace("&", "&amp;")
                 .replace("<", "&lt;")
                 .replace(">", "&gt;")
         )
-        # Demi-pt pour w:sz
         sz_half_pt = int(font_size_pt * 2)
-
         bold_xml   = '<w:b/>'   if bold   else ''
         italic_xml = '<w:i/>'   if italic else ''
 
-        return f'''<w:p xmlns:w="{_W_NS}" xmlns:wp="{_WP_NS}" xmlns:a="{_A_NS}" xmlns:r="{_R_NS}" xmlns:wps="{_WPS_NS}" xmlns:mc="{_MC_NS}" xmlns:w14="{_W14_NS}" xmlns:pic="{_PIC_NS}">
-  <w:pPr><w:spacing w:before="0" w:after="0"/></w:pPr>
-  <w:r>
-    <w:rPr><w:noProof/></w:rPr>
-    <mc:AlternateContent>
-      <mc:Choice Requires="wps">
-        <w:drawing>
-          <wp:anchor distT="0" distB="0" distL="0" distR="0" simplePos="0" relativeHeight="{2 + unique_id}" behindDoc="0" locked="0" layoutInCell="1" allowOverlap="1">
-            <wp:simplePos x="0" y="0"/>
-            <wp:positionH relativeFrom="page"><wp:posOffset>{x_emu}</wp:posOffset></wp:positionH>
-            <wp:positionV relativeFrom="page"><wp:posOffset>{y_emu}</wp:posOffset></wp:positionV>
-            <wp:extent cx="{w_emu}" cy="{h_emu}"/>
-            <wp:effectExtent l="0" t="0" r="0" b="0"/>
-            <wp:wrapNone/>
-            <wp:docPr id="{1000 + unique_id}" name="TextBox{unique_id}"/>
-            <wp:cNvGraphicFramePr/>
-            <a:graphic>
-              <a:graphicData uri="http://schemas.microsoft.com/office/word/2010/wordprocessingShape">
-                <wps:wsp>
-                  <wps:cNvSpPr txBox="1"/>
-                  <wps:spPr>
-                    <a:xfrm>
-                      <a:off x="0" y="0"/>
-                      <a:ext cx="{w_emu}" cy="{h_emu}"/>
-                    </a:xfrm>
-                    <a:prstGeom prst="rect"><a:avLst/></a:prstGeom>
-                    <a:noFill/>
-                    <a:ln><a:noFill/></a:ln>
-                  </wps:spPr>
-                  <wps:txbx>
-                    <w:txbxContent>
-                      <w:p>
-                        <w:pPr>
-                          <w:spacing w:before="0" w:after="0" w:line="240" w:lineRule="auto"/>
-                          <w:ind w:left="0" w:right="0"/>
-                        </w:pPr>
-                        <w:r>
-                          <w:rPr>
-                            <w:rFonts w:ascii="{font_name}" w:hAnsi="{font_name}"/>
-                            <w:color w:val="{color_hex}"/>
-                            <w:sz w:val="{sz_half_pt}"/>
-                            {bold_xml}{italic_xml}
-                          </w:rPr>
-                          <w:t xml:space="preserve">{text_esc}</w:t>
-                        </w:r>
-                      </w:p>
-                    </w:txbxContent>
-                  </wps:txbx>
-                  <wps:bodyPr rot="0" spcFirstLastPara="0" vertOverflow="visible" horzOverflow="visible" wrap="none" lIns="0" tIns="0" rIns="0" bIns="0" anchor="t"/>
-                </wps:wsp>
-              </a:graphicData>
-            </a:graphic>
-          </wp:anchor>
-        </w:drawing>
-      </mc:Choice>
-      <mc:Fallback>
-        <w:pict>
-          <w:r><w:t>{text_esc}</w:t></w:r>
-        </w:pict>
-      </mc:Fallback>
-    </mc:AlternateContent>
-  </w:r>
+        # Coordonnées en points (VML utilise des points, pas EMU)
+        x_pt = x_emu / EMU_PER_PT
+        y_pt = y_emu / EMU_PER_PT
+        w_pt = w_emu / EMU_PER_PT
+        h_pt = h_emu / EMU_PER_PT
+
+        # Style VML : position absolue par rapport à la page
+        style = (
+            f"position:absolute;"
+            f"margin-left:{x_pt:.2f}pt;margin-top:{y_pt:.2f}pt;"
+            f"width:{w_pt:.2f}pt;height:{h_pt:.2f}pt;"
+            f"z-index:{2 + unique_id};"
+            f"mso-position-horizontal-relative:page;"
+            f"mso-position-vertical-relative:page;"
+        )
+
+        return f'''<w:p xmlns:w="{_W_NS}" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w10="urn:schemas-microsoft-com:office:word">
+<w:pPr><w:spacing w:before="0" w:after="0"/></w:pPr>
+<w:r>
+<w:rPr><w:noProof/></w:rPr>
+<w:pict>
+<v:shape id="TextBox{unique_id}" o:spid="_x0000_s{1000 + unique_id}" type="#_x0000_t202" style="{style}" filled="f" stroked="f">
+<v:textbox inset="0,0,0,0">
+<w:txbxContent>
+<w:p>
+<w:pPr><w:spacing w:before="0" w:after="0" w:line="240" w:lineRule="auto"/><w:ind w:left="0" w:right="0"/></w:pPr>
+<w:r>
+<w:rPr>
+<w:rFonts w:ascii="{font_name}" w:hAnsi="{font_name}" w:cs="{font_name}"/>
+<w:color w:val="{color_hex}"/>
+<w:sz w:val="{sz_half_pt}"/>
+<w:szCs w:val="{sz_half_pt}"/>
+{bold_xml}{italic_xml}
+</w:rPr>
+<w:t xml:space="preserve">{text_esc}</w:t>
+</w:r>
+</w:p>
+</w:txbxContent>
+</v:textbox>
+</v:shape>
+</w:pict>
+</w:r>
 </w:p>'''
 
     # ── Helpers ──────────────────────────────────────────────────────────────
