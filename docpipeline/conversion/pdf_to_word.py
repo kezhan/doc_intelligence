@@ -37,6 +37,7 @@ from ._hybrid_converter import HybridConverter
 from ._libreoffice_converter import LibreOfficeConverter, _find_libreoffice
 from ._msword_converter import MSWordConverter
 from ._ocr_converter import OCRConverter
+from ._overlay_converter import OverlayConverter
 from ._smart_converter import SmartConverter
 from ._text_converter import TextConverter
 
@@ -302,6 +303,10 @@ def _run_engine(
     if engine == "hybrid":
         HybridConverter(dpi=hybrid_dpi).convert(pdf_path, output_path)
         return f"HybridConverter (image+overlay, {hybrid_dpi}dpi)", False, "pixel-perfect"
+
+    if engine == "overlay":
+        OverlayConverter(dpi=hybrid_dpi).convert(pdf_path, output_path)
+        return f"OverlayConverter (image+textboxes, {hybrid_dpi}dpi)", True, "pixel-perfect"
 
     SmartConverter().convert(pdf_path, output_path)
     return "SmartConverter (PyMuPDF)", True, "approximate"
