@@ -30,6 +30,8 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
+from ._adobe_credentials import get_adobe_credentials
+
 logger = logging.getLogger(__name__)
 
 _TOKEN_URL  = "https://pdf-services.adobe.io/token"
@@ -51,15 +53,20 @@ class AdobeConverter:
         client_secret: str | None = None,
         timeout:       int = 300,
     ) -> None:
-        self.client_id     = client_id     or os.environ.get("ADOBE_CLIENT_ID")
-        self.client_secret = client_secret or os.environ.get("ADOBE_CLIENT_SECRET")
-        self.timeout       = timeout
+        if client_id and client_secret:
+            self.client_id     = client_id
+            self.client_secret = client_secret
+        else:
+            self.client_id, self.client_secret = get_adobe_credentials()
+        self.timeout = timeout
 
         if not self.client_id or not self.client_secret:
             raise ValueError(
-                "Adobe credentials manquants. Configurez :\n"
-                "  $env:ADOBE_CLIENT_ID='...'      (PowerShell)\n"
-                "  $env:ADOBE_CLIENT_SECRET='...'  (PowerShell)\n"
+                "Adobe credentials manquants. 3 façons de les configurer :\n"
+                "  1. CLI (persistant) : docpipeline configure-adobe --client-id ... --secret ...\n"
+                "  2. Variables d'env  : $env:ADOBE_CLIENT_ID='...'; $env:ADOBE_CLIENT_SECRET='...'\n"
+                "  3. Auto-detection   : place pdfservices-api-credentials.json (du SDK Adobe)\n"
+                "                        dans le dossier courant ou un sous-dossier\n"
                 "Compte gratuit : https://developer.adobe.com/document-services/"
             )
 

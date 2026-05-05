@@ -31,6 +31,7 @@ import fitz  # PyMuPDF
 
 from ..parsing.pdf.classifier import PDFCategory, classify_pdf
 from ._adobe_converter import AdobeConverter
+from ._adobe_credentials import adobe_credentials_available
 from ._docling_converter import DoclingConverter
 from ._docx_enhancer import DocxEnhancer
 from ._hybrid_converter import HybridConverter
@@ -229,7 +230,8 @@ def _has_complex_visual_layout(pdf_path: Path) -> bool:
 
 
 def _adobe_available() -> bool:
-    return bool(os.environ.get("ADOBE_CLIENT_ID") and os.environ.get("ADOBE_CLIENT_SECRET"))
+    """Détecte les credentials Adobe (env vars, fichier persistant, ou SDK auto-détecté)."""
+    return adobe_credentials_available()
 
 
 def _msword_available() -> bool:

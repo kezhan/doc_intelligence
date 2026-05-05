@@ -124,6 +124,14 @@ Exemples :
     p_dd.add_argument("--logos", action="store_true",
                       help="Lister les logos (images apparaissant dans plusieurs documents)")
 
+    # ── configure-adobe ──────────────────────────────────────────────────────
+    p_cfg = sub.add_parser(
+        "configure-adobe",
+        help="Sauvegarder durablement les credentials Adobe PDF Services"
+    )
+    p_cfg.add_argument("--client-id",     required=True, help="Adobe Client ID")
+    p_cfg.add_argument("--client-secret", required=True, help="Adobe Client Secret")
+
     # ── version ──────────────────────────────────────────────────────────────
     sub.add_parser("version", help="Afficher la version")
 
@@ -150,8 +158,9 @@ def _dispatch(args) -> int:
     if cmd == "ask":           return _cmd_ask(args)
     if cmd == "summarize":     return _cmd_summarize(args)
     if cmd == "translate":     return _cmd_translate(args)
-    if cmd == "dedupe-images": return _cmd_dedupe(args)
-    if cmd == "version":       return _cmd_version()
+    if cmd == "dedupe-images":   return _cmd_dedupe(args)
+    if cmd == "configure-adobe": return _cmd_configure_adobe(args)
+    if cmd == "version":         return _cmd_version()
     return 1
 
 
@@ -305,6 +314,15 @@ def _cmd_dedupe(args) -> int:
             for lo in logos:
                 print(f"  {lo['hash'][:12]} — {lo['width']}×{lo['height']} — "
                       f"{lo['documents']} docs — {lo['path']}")
+    return 0
+
+
+def _cmd_configure_adobe(args) -> int:
+    from .conversion._adobe_credentials import save_adobe_credentials
+    path = save_adobe_credentials(args.client_id, args.client_secret)
+    print(f"✓ Credentials Adobe sauvegardés : {path}")
+    print(f"  Le moteur 'adobe' sera maintenant sélectionné automatiquement")
+    print(f"  pour les PDFs design complexes.")
     return 0
 
 
