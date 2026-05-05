@@ -55,7 +55,7 @@ Exemples :
     p_conv.add_argument("output", help="Fichier de sortie (extension détermine la conversion)")
     p_conv.add_argument(
         "--engine",
-        choices=["adobe", "msword", "docling", "libreoffice", "smart", "text", "ocr", "hybrid", "overlay"],
+        choices=["adobe", "msword", "docling", "libreoffice", "smart", "text", "ocr", "hybrid"],
         help="Forcer un moteur de conversion (PDF→Word) :\n"
              "  adobe       = qualité Acrobat Pro (cloud, gratuit jusqu'à 500/mois)\n"
              "  msword      = Word PDF Reflow (Windows + Office)\n"
@@ -64,8 +64,7 @@ Exemples :
              "  smart       = PyMuPDF reconstruction (offline)\n"
              "  text        = pdf2docx (PDFs Word natifs)\n"
              "  ocr         = Tesseract pour PDFs scannés\n"
-             "  hybrid      = image + texte invisible (visuel parfait, non éditable)\n"
-             "  overlay     = image + zones texte éditables (visuel parfait + éditable) ⭐"
+             "  hybrid      = image + texte invisible (visuel parfait, non éditable)"
     )
     p_conv.add_argument("--prefer", choices=["balanced", "editable", "visual"],
                         default="balanced",

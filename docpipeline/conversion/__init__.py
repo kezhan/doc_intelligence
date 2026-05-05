@@ -11,7 +11,6 @@ from ._hybrid_converter import HybridConverter
 from ._libreoffice_converter import LibreOfficeConverter
 from ._msword_converter import MSWordConverter
 from ._ocr_converter import OCRConverter
-from ._overlay_converter import OverlayConverter
 from ._smart_converter import SmartConverter
 from ._text_converter import TextConverter
 from .pdf_to_word import ConversionResult, convert_pdf_to_word
@@ -27,6 +26,5 @@ __all__ = [
     "LibreOfficeConverter",
     "AdobeConverter",
     "DoclingConverter",
-    "OverlayConverter",
     "DocxEnhancer",
 ]
