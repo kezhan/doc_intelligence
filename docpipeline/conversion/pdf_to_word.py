@@ -146,11 +146,18 @@ def _select_engine(
 ) -> str:
     """
     Choix du moteur en fonction de :
+      - la disponibilité d'Adobe (priorité absolue dès qu'il est configuré)
       - la classification (word_native, design_tool, scanned, other)
       - la complexité visuelle (PDFs InDesign, brochures...)
       - la stratégie demandée (balanced / editable / visual)
-      - la disponibilité des moteurs externes (Adobe, MS Word, LibreOffice)
+      - la disponibilité des autres moteurs (MS Word, LibreOffice...)
     """
+    # ⭐ Priorité absolue à Adobe quand il est configuré (qualité Acrobat Pro)
+    # Seul cas d'exception : PDFs scannés où l'OCR local est plus rapide
+    if _adobe_available() and category != PDFCategory.SCANNED:
+        warnings.append("Adobe configuré → moteur Adobe (qualité Acrobat Pro).")
+        return "adobe"
+
     # PDF Word natif → pdf2docx reste imbattable et rapide
     if category == PDFCategory.WORD_NATIVE:
         return "text"
@@ -166,8 +173,7 @@ def _select_engine(
         # PDF moyennement structuré : Smart suffit largement
         return "smart"
 
-    # PDF design complexe (InDesign, brochure...) — viser fidélité ET éditabilité
-    # Cascade : Adobe → MSWord → Docling → LibreOffice → fallback selon prefer
+    # PDF design complexe sans Adobe : cascade des alternatives gratuites
     if _adobe_available():
         warnings.append(
             "Layout complexe détecté → moteur Adobe (qualité Acrobat Pro)."
