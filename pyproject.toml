@@ -68,7 +68,7 @@ Repository = "https://github.com/BosterJack/docpipeline"
 Issues = "https://github.com/BosterJack/docpipeline/issues"
 
 [tool.setuptools.packages.find]
-where = ["."]
+where = ["src"]
 include = ["docpipeline*"]
 exclude = ["tests*"]
 
