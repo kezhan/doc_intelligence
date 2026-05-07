@@ -1,0 +1,95 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 700" font-family="'Inter', 'Helvetica Neue', system-ui, sans-serif">
+  <defs>
+    <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#475569"/>
+    </marker>
+    <marker id="arr-red" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#b91c1c"/>
+    </marker>
+  </defs>
+
+  <style>
+    .lbl       { font-size: 15px; fill: #0f172a; }
+    .lbl-sm    { font-size: 12px; fill: #475569; }
+    .lbl-mono  { font-size: 12px; fill: #0f172a; font-family: 'Fira Code', 'Consolas', monospace; }
+    .lbl-edge  { font-size: 13px; fill: #334155; font-weight: 600; }
+    .lbl-bad   { font-size: 13px; fill: #b91c1c; font-style: italic; font-weight: 600; }
+    .lbl-good  { font-size: 13px; fill: #047857; font-style: italic; font-weight: 600; }
+    .box       { fill: #ffffff; stroke: #1e293b; stroke-width: 2; rx: 10; }
+    .box-in    { fill: #dbeafe; stroke: #1d4ed8; stroke-width: 2; rx: 10; }
+    .box-pdf   { fill: #ede9fe; stroke: #6d28d9; stroke-width: 2; rx: 10; }
+    .box-word  { fill: #cffafe; stroke: #0e7490; stroke-width: 2; rx: 10; }
+    .box-skip  { fill: #fef3c7; stroke: #b45309; stroke-width: 2; stroke-dasharray: 6 4; rx: 10; }
+    .box-out   { fill: #d1fae5; stroke: #047857; stroke-width: 2; rx: 10; }
+    .box-bad   { fill: #fee2e2; stroke: #b91c1c; stroke-width: 2; rx: 10; }
+    .arr       { fill: none; stroke: #475569; stroke-width: 2; }
+    .arr-bad   { fill: none; stroke: #b91c1c; stroke-width: 2; stroke-dasharray: 5 4; }
+  </style>
+
+  <!-- Title -->
+  <text x="500" y="34" text-anchor="middle" font-size="18" font-weight="600" fill="#0f172a">Same question, two document types — page_hint disappears on Word</text>
+
+  <!-- Input -->
+  <rect class="box-in" x="320" y="60" width="360" height="64"/>
+  <text class="lbl" x="500" y="86" text-anchor="middle">"What's the effective date?</text>
+  <text class="lbl" x="500" y="106" text-anchor="middle">It's usually on page 1, top-right block."</text>
+
+  <!-- Branch arrows -->
+  <path class="arr" d="M 500 124 L 250 180" marker-end="url(#arr)"/>
+  <path class="arr" d="M 500 124 L 750 180" marker-end="url(#arr)"/>
+  <text class="lbl-edge" x="320" y="160">document_type = "pdf"</text>
+  <text class="lbl-edge" x="600" y="160">document_type = "word"</text>
+
+  <!-- Left column: PDF -->
+  <rect class="box-pdf" x="80" y="180" width="340" height="84"/>
+  <text class="lbl" x="250" y="208" text-anchor="middle">preset_pdf</text>
+  <text class="lbl-sm" x="250" y="230" text-anchor="middle">[rewrite, anchor_keywords, page_hint,</text>
+  <text class="lbl-sm" x="250" y="248" text-anchor="middle">section_hint, layout_hint, format, disambig]</text>
+
+  <line class="arr" x1="250" y1="264" x2="250" y2="300" marker-end="url(#arr)"/>
+
+  <rect class="box" x="100" y="300" width="300" height="50"/>
+  <text class="lbl" x="250" y="330" text-anchor="middle">page_hint brick runs ✓</text>
+
+  <line class="arr" x1="250" y1="350" x2="250" y2="386" marker-end="url(#arr)"/>
+
+  <rect class="box-out" x="60" y="386" width="380" height="160"/>
+  <text class="lbl" x="250" y="412" text-anchor="middle">retrieval JSON</text>
+  <line x1="80" y1="424" x2="420" y2="424" stroke="#94a3b8" stroke-width="1"/>
+  <text class="lbl-mono" x="80" y="448">{</text>
+  <text class="lbl-mono" x="92" y="468">"main_query": "What's the effective…",</text>
+  <text class="lbl-mono" x="92" y="488">"page_hint": 1,</text>
+  <text class="lbl-mono" x="92" y="508">"layout_hint": "header"</text>
+  <text class="lbl-mono" x="80" y="528">}</text>
+
+  <text class="lbl-good" x="250" y="566" text-anchor="middle">→ retriever filters page=1 (stable)</text>
+
+  <!-- Right column: Word -->
+  <rect class="box-word" x="580" y="180" width="340" height="84"/>
+  <text class="lbl" x="750" y="208" text-anchor="middle">preset_word</text>
+  <text class="lbl-sm" x="750" y="230" text-anchor="middle">[rewrite, anchor_keywords,</text>
+  <text class="lbl-sm" x="750" y="248" text-anchor="middle">section_hint, layout_hint, format, disambig]</text>
+
+  <line class="arr" x1="750" y1="264" x2="750" y2="300" marker-end="url(#arr)"/>
+
+  <rect class="box-skip" x="600" y="300" width="300" height="50"/>
+  <text class="lbl" x="750" y="330" text-anchor="middle">page_hint brick — skipped</text>
+
+  <line class="arr" x1="750" y1="350" x2="750" y2="386" marker-end="url(#arr)"/>
+
+  <rect class="box-out" x="560" y="386" width="380" height="160"/>
+  <text class="lbl" x="750" y="412" text-anchor="middle">retrieval JSON</text>
+  <line x1="580" y1="424" x2="920" y2="424" stroke="#94a3b8" stroke-width="1"/>
+  <text class="lbl-mono" x="580" y="448">{</text>
+  <text class="lbl-mono" x="592" y="468">"main_query": "What's the effective…",</text>
+  <text class="lbl-mono" x="592" y="488">"layout_hint": "header"</text>
+  <text class="lbl-mono" x="580" y="508">}</text>
+  <text class="lbl-sm" x="750" y="532" text-anchor="middle" font-style="italic">— no page_hint field at all</text>
+
+  <text class="lbl-good" x="750" y="566" text-anchor="middle">→ retriever sees no misleading hint</text>
+
+  <!-- Bottom callout -->
+  <rect class="box" x="200" y="610" width="600" height="64" fill="#f8fafc"/>
+  <text class="lbl" x="500" y="636" text-anchor="middle" font-weight="600">One line in PRESETS["word"] saved three hours of debugging.</text>
+  <text class="lbl-sm" x="500" y="658" text-anchor="middle">Domain knowledge ("Word has no stable pages") lives in the preset, not in the pipeline.</text>
+</svg>

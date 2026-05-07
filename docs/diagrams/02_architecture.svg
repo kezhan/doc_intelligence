@@ -1,0 +1,112 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 620" font-family="'Inter', 'Helvetica Neue', system-ui, sans-serif">
+  <defs>
+    <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#475569"/>
+    </marker>
+    <marker id="arr-dotted" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#94a3b8"/>
+    </marker>
+  </defs>
+
+  <style>
+    .lbl       { font-size: 15px; fill: #0f172a; }
+    .lbl-sm    { font-size: 12px; fill: #475569; }
+    .lbl-edge  { font-size: 12px; fill: #64748b; font-style: italic; }
+    .title     { font-size: 13px; fill: #b45309; font-weight: 600; }
+    .box       { fill: #ffffff; stroke: #1e293b; stroke-width: 2; rx: 10; }
+    .box-in    { fill: #dbeafe; stroke: #1d4ed8; stroke-width: 2; rx: 10; }
+    .box-out   { fill: #d1fae5; stroke: #047857; stroke-width: 2; rx: 10; }
+    .box-cfg   { fill: #fef3c7; stroke: #b45309; stroke-width: 2; rx: 10; }
+    .diamond   { fill: #fff7ed; stroke: #c2410c; stroke-width: 2; }
+    .arr       { fill: none; stroke: #475569; stroke-width: 2; }
+    .arr-dot   { fill: none; stroke: #94a3b8; stroke-width: 1.6; stroke-dasharray: 5 4; }
+  </style>
+
+  <!-- Title -->
+  <text x="500" y="34" text-anchor="middle" font-size="18" font-weight="600" fill="#0f172a">Registry + presets — the shape of the system</text>
+
+  <!-- Input -->
+  <rect class="box-in" x="20" y="240" width="200" height="120"/>
+  <text class="lbl" x="120" y="272" text-anchor="middle">question</text>
+  <text class="lbl" x="120" y="294" text-anchor="middle">document_type</text>
+  <text class="lbl" x="120" y="316" text-anchor="middle">enable={…}</text>
+  <text class="lbl" x="120" y="338" text-anchor="middle">domain_hint</text>
+
+  <!-- arrow input → understand_question -->
+  <line class="arr" x1="220" y1="300" x2="290" y2="300" marker-end="url(#arr)"/>
+
+  <!-- understand_question -->
+  <rect class="box" x="290" y="270" width="200" height="64"/>
+  <text class="lbl" x="390" y="298" text-anchor="middle">understand_question</text>
+  <text class="lbl-sm" x="390" y="318" text-anchor="middle">spell · clarify · classify · decompose</text>
+
+  <!-- arrow understand_question → diamond -->
+  <line class="arr" x1="490" y1="302" x2="540" y2="302" marker-end="url(#arr)"/>
+
+  <!-- Diamond: select active bricks -->
+  <polygon class="diamond" points="640,250 740,302 640,354 540,302"/>
+  <text class="lbl" x="640" y="298" text-anchor="middle">select</text>
+  <text class="lbl" x="640" y="316" text-anchor="middle">active bricks</text>
+
+  <!-- PRESETS box (above) -->
+  <rect class="box-cfg" x="540" y="80" width="200" height="100"/>
+  <text class="title" x="640" y="106" text-anchor="middle">PRESETS</text>
+  <text class="lbl-sm" x="640" y="128" text-anchor="middle">pdf  → page · section · …</text>
+  <text class="lbl-sm" x="640" y="146" text-anchor="middle">word → section · format · …</text>
+  <text class="lbl-sm" x="640" y="164" text-anchor="middle">excel → format · disambig</text>
+
+  <!-- arrow PRESETS → diamond (dotted = consults) -->
+  <path class="arr-dot" d="M 640 180 L 640 250" marker-end="url(#arr-dotted)"/>
+  <text class="lbl-edge" x="660" y="220">consults</text>
+
+  <!-- enable override box (below) -->
+  <rect class="box-cfg" x="540" y="430" width="200" height="80"/>
+  <text class="title" x="640" y="456" text-anchor="middle">enable={…} OVERRIDE</text>
+  <text class="lbl-sm" x="640" y="478" text-anchor="middle">{"page_hint": False}</text>
+  <text class="lbl-sm" x="640" y="496" text-anchor="middle">{"jurisdiction": True}</text>
+
+  <!-- arrow override → diamond -->
+  <path class="arr-dot" d="M 640 430 L 640 354" marker-end="url(#arr-dotted)"/>
+
+  <!-- arrow diamond → run -->
+  <line class="arr" x1="740" y1="302" x2="800" y2="302" marker-end="url(#arr)"/>
+
+  <!-- Run each brick -->
+  <rect class="box" x="800" y="270" width="180" height="64"/>
+  <text class="lbl" x="890" y="298" text-anchor="middle">run each brick</text>
+  <text class="lbl-sm" x="890" y="318" text-anchor="middle">brick.run(q, ctx)</text>
+
+  <!-- BRICKS registry box (above) -->
+  <rect class="box-cfg" x="800" y="80" width="180" height="160"/>
+  <text class="title" x="890" y="106" text-anchor="middle">BRICKS REGISTRY</text>
+  <text class="lbl-sm" x="890" y="128" text-anchor="middle">rewrite (LLM)</text>
+  <text class="lbl-sm" x="890" y="146" text-anchor="middle">anchor_keywords</text>
+  <text class="lbl-sm" x="890" y="164" text-anchor="middle">page_hint  [pdf, pptx]</text>
+  <text class="lbl-sm" x="890" y="182" text-anchor="middle">section_hint  [pdf, word, pptx]</text>
+  <text class="lbl-sm" x="890" y="200" text-anchor="middle">layout_hint</text>
+  <text class="lbl-sm" x="890" y="218" text-anchor="middle">format · disambiguation</text>
+
+  <!-- arrow registry → run -->
+  <path class="arr-dot" d="M 890 240 L 890 270" marker-end="url(#arr-dotted)"/>
+
+  <!-- Output JSON below run -->
+  <rect class="box-out" x="730" y="430" width="250" height="120"/>
+  <text class="lbl" x="855" y="458" text-anchor="middle">list of dicts</text>
+  <text class="lbl-sm" x="855" y="482" text-anchor="middle">retrieval { … only populated fields … }</text>
+  <text class="lbl-sm" x="855" y="500" text-anchor="middle">generation { … only populated fields … }</text>
+  <text class="lbl-sm" x="855" y="518" text-anchor="middle">_meta { intent, document_type,</text>
+  <text class="lbl-sm" x="855" y="534" text-anchor="middle">         bricks_active }</text>
+
+  <!-- arrow run → output -->
+  <path class="arr" d="M 890 334 L 890 380 L 855 380 L 855 430" marker-end="url(#arr)"/>
+
+  <!-- Legend -->
+  <g transform="translate(20, 540)">
+    <rect class="box-cfg" x="0" y="0" width="20" height="14"/>
+    <text class="lbl-sm" x="28" y="12">config (declarative)</text>
+    <line class="arr-dot" x1="180" y1="7" x2="220" y2="7"/>
+    <text class="lbl-sm" x="228" y="12">consults</text>
+    <line class="arr" x1="320" y1="7" x2="360" y2="7"/>
+    <text class="lbl-sm" x="368" y="12">data flow</text>
+  </g>
+</svg>

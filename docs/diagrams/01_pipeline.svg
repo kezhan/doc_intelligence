@@ -1,0 +1,85 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 980" font-family="'Inter', 'Helvetica Neue', system-ui, sans-serif">
+  <defs>
+    <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#475569"/>
+    </marker>
+  </defs>
+
+  <style>
+    .lbl       { font-size: 15px; fill: #0f172a; }
+    .lbl-sm    { font-size: 12px; fill: #475569; }
+    .lbl-edge  { font-size: 12px; fill: #334155; font-style: italic; }
+    .box       { fill: #ffffff; stroke: #1e293b; stroke-width: 2; rx: 10; }
+    .box-in    { fill: #dbeafe; stroke: #1d4ed8; stroke-width: 2; rx: 10; }
+    .box-out   { fill: #d1fae5; stroke: #047857; stroke-width: 2; rx: 10; }
+    .box-stop  { fill: #fee2e2; stroke: #b91c1c; stroke-width: 2; rx: 10; }
+    .diamond   { fill: #fef3c7; stroke: #b45309; stroke-width: 2; }
+    .arr       { fill: none; stroke: #475569; stroke-width: 2; }
+  </style>
+
+  <!-- Title -->
+  <text x="380" y="34" text-anchor="middle" font-size="18" font-weight="600" fill="#0f172a">understand_question — orchestration flow</text>
+
+  <!-- 0. Input -->
+  <rect class="box-in" x="240" y="70" width="280" height="64"/>
+  <text class="lbl" x="380" y="98" text-anchor="middle">User question</text>
+  <text class="lbl" x="380" y="118" text-anchor="middle">+ document_type, enable, …</text>
+  <line class="arr" x1="380" y1="134" x2="380" y2="170" marker-end="url(#arr)"/>
+
+  <!-- 1. spell-correct -->
+  <rect class="box" x="270" y="170" width="220" height="48"/>
+  <text class="lbl" x="380" y="200" text-anchor="middle">spell-correct</text>
+  <line class="arr" x1="380" y1="218" x2="380" y2="254" marker-end="url(#arr)"/>
+
+  <!-- 2. Diamond: ambiguous? -->
+  <polygon class="diamond" points="380,254 510,316 380,378 250,316"/>
+  <text class="lbl" x="380" y="312" text-anchor="middle">ambiguous</text>
+  <text class="lbl" x="380" y="332" text-anchor="middle">referent?</text>
+  <!-- right branch (yes) → clarify -->
+  <path class="arr" d="M 510 316 L 600 316" marker-end="url(#arr)"/>
+  <text class="lbl-edge" x="540" y="308" text-anchor="middle">yes</text>
+  <rect class="box-stop" x="600" y="288" width="150" height="56"/>
+  <text class="lbl" x="675" y="312" text-anchor="middle">return</text>
+  <text class="lbl" x="675" y="330" text-anchor="middle">clarify + options</text>
+  <!-- down branch (no) -->
+  <line class="arr" x1="380" y1="378" x2="380" y2="414" marker-end="url(#arr)"/>
+  <text class="lbl-edge" x="396" y="398">no</text>
+
+  <!-- 3. classify_intent -->
+  <rect class="box" x="270" y="414" width="220" height="48"/>
+  <text class="lbl" x="380" y="444" text-anchor="middle">classify_intent</text>
+  <line class="arr" x1="380" y1="462" x2="380" y2="498" marker-end="url(#arr)"/>
+
+  <!-- 4. Diamond: compound? -->
+  <polygon class="diamond" points="380,498 510,560 380,622 250,560"/>
+  <text class="lbl" x="380" y="566" text-anchor="middle">compound?</text>
+  <!-- right branch (yes) → decompose -->
+  <path class="arr" d="M 510 560 L 600 560" marker-end="url(#arr)"/>
+  <text class="lbl-edge" x="540" y="552" text-anchor="middle">yes</text>
+  <rect class="box" x="600" y="532" width="150" height="56"/>
+  <text class="lbl" x="675" y="554" text-anchor="middle">decompose into</text>
+  <text class="lbl" x="675" y="574" text-anchor="middle">N sub-questions</text>
+  <!-- down branch (no) -->
+  <line class="arr" x1="380" y1="622" x2="380" y2="660" marker-end="url(#arr)"/>
+  <text class="lbl-edge" x="396" y="644">no</text>
+
+  <!-- 5. 1 sub-question (collapses with decompose) -->
+  <rect class="box" x="270" y="660" width="220" height="48"/>
+  <text class="lbl" x="380" y="690" text-anchor="middle">1 sub-question</text>
+
+  <!-- merge from decompose down to loop -->
+  <path class="arr" d="M 675 588 L 675 750 L 480 750" marker-end="url(#arr)"/>
+  <line class="arr" x1="380" y1="708" x2="380" y2="744" marker-end="url(#arr)"/>
+
+  <!-- 6. Run bricks loop -->
+  <rect class="box" x="200" y="750" width="360" height="68"/>
+  <text class="lbl" x="380" y="778" text-anchor="middle">for each sub-question:</text>
+  <text class="lbl" x="380" y="800" text-anchor="middle">run active bricks (preset ∩ enable)</text>
+  <line class="arr" x1="380" y1="818" x2="380" y2="858" marker-end="url(#arr)"/>
+
+  <!-- 7. Output -->
+  <rect class="box-out" x="240" y="858" width="280" height="80"/>
+  <text class="lbl" x="380" y="888" text-anchor="middle">list of dicts</text>
+  <text class="lbl-sm" x="380" y="908" text-anchor="middle">[{ retrieval, generation, _meta }, …]</text>
+  <text class="lbl-sm" x="380" y="924" text-anchor="middle">— always a list, even for a single question</text>
+</svg>
