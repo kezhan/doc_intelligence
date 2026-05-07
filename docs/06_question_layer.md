@@ -7,7 +7,7 @@ faut pour la suite du pipeline (retrieval, génération). C'est tout. Sur le pap
 c'est trois lignes :
 
 ```python
-from src.question_parsing import understand_question
+from src.question import understand_question
 
 plan = understand_question(
     "Quelle est la prime sur ce contrat ?",
