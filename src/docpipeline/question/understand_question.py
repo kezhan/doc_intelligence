@@ -17,10 +17,10 @@ Ce module commence par UNE seule fonction de la première préparation :
 structurels que l'utilisateur a glissés dans sa question (page, section,
 layout) pour les utiliser comme filtres avant la recherche.
 
-Approche :
-  - Regex déterministe pour les patterns évidents (page X, section Y, table)
-  - Pas de classe, fonctions pures + dataclass
-  - LLM en option pour les cas flous (à activer plus tard)
+Approche : regex déterministe uniquement, pas de LLM.
+  (Règle d'équipe : LLM réservé à translation / summarization / Excel SQL agent —
+  jamais dans parsing, classification, retrieval. Cf. CLAUDE.md du repo.)
+  Pas de classe, fonctions pures + dataclass.
 
 Liens avec parse_pdf.py : les hints produits ici (`page_hint`, `layout_hint`)
 matchent directement les flags du `page_df` (`page_num`, `has_vector_table`,
