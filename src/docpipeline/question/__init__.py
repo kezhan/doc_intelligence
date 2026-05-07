@@ -1,11 +1,25 @@
-"""Question understanding sub-package."""
+"""Question sub-package — parser une question utilisateur en JSON structuré."""
 
-from .understand_question import (
+from .question_parsing import (
+    Disambiguation,
+    ParsedQuestion,
     StructuralHints,
+    classify_intent,
+    extract_anchor_keywords,
+    extract_disambiguation,
+    extract_format_constraint,
     extract_hints,
+    parse_question,
 )
 
 __all__ = [
-    "StructuralHints",
+    "parse_question",
     "extract_hints",
+    "extract_anchor_keywords",
+    "extract_format_constraint",
+    "extract_disambiguation",
+    "classify_intent",
+    "ParsedQuestion",
+    "StructuralHints",
+    "Disambiguation",
 ]
