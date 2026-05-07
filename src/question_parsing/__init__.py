@@ -1,11 +1,11 @@
 """
-src.question — Chapitre 6 : Understanding the Question Before Searching.
+src.question_parsing — Chapitre 6 : Understanding the Question Before Searching.
 
 Conception : design article dans [docs/06_question_layer.md](../../docs/06_question_layer.md).
 
 API publique :
 
-    from src.question import understand_question
+    from src.question_parsing import understand_question
 
     plan = understand_question(
         "Quelle est la prime sur ce contrat ?",
@@ -15,7 +15,7 @@ API publique :
 
 Pour étendre :
 
-    from src.question import BRICKS, PRESETS, Brick
+    from src.question_parsing import BRICKS, PRESETS, Brick
 
     BRICKS["my_brick"] = Brick("my_brick", "retrieval", _run_my_brick)
     PRESETS["pdf"].append("my_brick")
