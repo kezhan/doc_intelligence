@@ -298,11 +298,15 @@ _SCANNER_PATTERNS: frozenset[str] = frozenset(
 class LineInfo:
     page_num:    int
     line_num:    int
+    span_id:     str                                          # format "p_<page>_<line>"
     text:        str
     bbox:        tuple[float, float, float, float]
     font_name:   str
     font_size:   float
-    is_invisible: bool   # rendu en mode invisible (couche OCR typique)
+    bold:        bool                                         # déduit des flags fitz
+    italic:      bool                                         # déduit des flags fitz
+    color:       str                                          # "#RRGGBB" ou ""
+    is_invisible: bool                                        # rendu en mode invisible (couche OCR typique)
 
 
 @dataclass
@@ -617,6 +621,25 @@ def _is_invisible_span(span: dict) -> bool:
     return span.get("color", 0) == 0xFFFFFF
 
 
+def _font_flags_to_bold_italic(flags: int, font_name: str) -> tuple[bool, bool]:
+    """
+    fitz expose des flags bit-field sur chaque span :
+        bit 4 (16) = bold ; bit 1 (2) = italic
+    On combine avec une heuristique sur le nom de police (« Bold », « Italic »)
+    parce que tous les PDFs ne renseignent pas correctement les flags.
+    """
+    bold   = bool(flags & 16) or any(tag in (font_name or "") for tag in ("Bold", "Black", "Heavy"))
+    italic = bool(flags & 2)  or any(tag in (font_name or "") for tag in ("Italic", "Oblique"))
+    return bold, italic
+
+
+def _color_int_to_hex(color: int) -> str:
+    """Couleur fitz (entier 24-bit RGB) → '#RRGGBB'."""
+    if not isinstance(color, int):
+        return ""
+    return f"#{color:06X}"
+
+
 def _collect_page_lines(page, page_num: int, start_line_num: int) -> tuple[list[LineInfo], int, int]:
     """Extraire les lignes d'une page. Retourne (lines, native_chars, ocr_chars)."""
     lines: list[LineInfo] = []
@@ -639,13 +662,25 @@ def _collect_page_lines(page, page_num: int, start_line_num: int) -> tuple[list[
                 ocr_chars += len(line_text)
             else:
                 native_chars += len(line_text)
+
+            # Style du premier span de la ligne (heuristique : la ligne est
+            # généralement homogène ; pour un découpage finer, on aurait
+            # 1 span par run, mais le contrat actuel = 1 ligne = 1 unité).
+            first = spans[0]
+            bold, italic = _font_flags_to_bold_italic(first.get("flags", 0), first.get("font", ""))
+            color_hex = _color_int_to_hex(first.get("color", 0)) if not invisible else ""
+
             lines.append(LineInfo(
                 page_num     = page_num,
                 line_num     = line_num,
+                span_id      = f"p_{page_num}_{line_num}",
                 text         = line_text,
                 bbox         = tuple(line.get("bbox", (0, 0, 0, 0))),
-                font_name    = spans[0].get("font", ""),
-                font_size    = float(spans[0].get("size", 0.0)),
+                font_name    = first.get("font", ""),
+                font_size    = float(first.get("size", 0.0)),
+                bold         = bold,
+                italic       = italic,
+                color        = color_hex,
                 is_invisible = invisible,
             ))
             line_num += 1
@@ -1058,7 +1093,154 @@ def parse_pdf(pdf_path) -> dict:
 
 
 # ╔════════════════════════════════════════════════════════════════════════════╗
-# ║ 9. CLI minimal                                                             ║
+# ║ 9. RECONSTRUCTION — apply_changes (pattern symétrique à parse_word)        ║
+# ╚════════════════════════════════════════════════════════════════════════════╝
+
+def _hex_to_rgb_float(hex_color: str) -> tuple[float, float, float]:
+    """'#RRGGBB' → (r, g, b) floats dans [0, 1]. Défaut noir."""
+    s = (hex_color or "").lstrip("#")
+    if len(s) != 6:
+        return (0.0, 0.0, 0.0)
+    try:
+        return (int(s[0:2], 16) / 255.0,
+                int(s[2:4], 16) / 255.0,
+                int(s[4:6], 16) / 255.0)
+    except ValueError:
+        return (0.0, 0.0, 0.0)
+
+
+def _select_pdf_font(bold: bool, italic: bool) -> str:
+    """
+    Sélection d'une police « standard 14 » PyMuPDF selon le style.
+
+    Limitation PyMuPDF : seules les Standard 14 fonts (Helvetica, Times,
+    Courier + variantes) sont disponibles sans embedding. Les polices
+    custom du PDF original ne peuvent pas être réutilisées telles quelles
+    via insert_textbox sans embedder le fichier .ttf manuellement.
+    """
+    if bold and italic:
+        return "Helvetica-BoldOblique"
+    if bold:
+        return "Helvetica-Bold"
+    if italic:
+        return "Helvetica-Oblique"
+    return "Helvetica"
+
+
+def apply_changes(
+    pdf_in,
+    span_changes: dict,
+    pdf_out,
+    *,
+    keep_images: bool = True,
+) -> dict:
+    """
+    Reconstruit un PDF en remplaçant le texte de certains spans, en préservant
+    les positions, tailles, couleurs et le gras/italique.
+
+    Pattern symétrique à `parse_word.apply_changes` :
+
+        extract  : parse_pdf(pdf_in)                 → line_df avec span_id
+        modify   : on construit {span_id: nouveau_texte}
+        rebuild  : apply_changes(pdf_in, span_changes, pdf_out)
+
+    Args:
+        pdf_in        : chemin du PDF source
+        span_changes  : dict {span_id: nouveau_texte} ; les span_id non listés
+                        gardent leur texte original.
+                        Format span_id : "p_<page>_<line>" (cf. LineInfo).
+        pdf_out       : chemin du PDF de sortie
+        keep_images   : conserver les images embarquées (défaut True)
+
+    Returns:
+        dict {output_path, spans_replaced, spans_skipped, warnings}
+
+    Limitations :
+        - Polices : limité aux Standard 14 PyMuPDF (Helvetica/Times/Courier).
+          Les polices originales custom ne sont pas réembed-ables ici sans
+          fournir le .ttf, donc le rendu peut différer visuellement.
+        - Bbox : si le texte traduit est plus long que l'original, on essaie
+          de réduire la taille de police progressivement (90, 80, 70, 60 %).
+    """
+    pdf_in  = Path(pdf_in)
+    pdf_out = Path(pdf_out)
+
+    # On a besoin du line_df pour récupérer bbox, color, font_size, bold/italic
+    # par span_id. On ne ré-extrait que ce qui est nécessaire.
+    insp = inspect_pdf(pdf_in)
+    by_span_id = {l.span_id: l for l in insp.lines}
+
+    warnings: list[str] = []
+    replaced = 0
+    skipped  = 0
+
+    doc = fitz.open(str(pdf_in))
+    try:
+        for span_id, new_text in span_changes.items():
+            line = by_span_id.get(span_id)
+            if line is None:
+                warnings.append(f"span_id {span_id!r} introuvable — skip")
+                skipped += 1
+                continue
+            page_idx = line.page_num
+            if page_idx < 0 or page_idx >= len(doc):
+                warnings.append(f"span_id {span_id!r} : page {page_idx} hors limites")
+                skipped += 1
+                continue
+            page = doc[page_idx]
+            bbox = fitz.Rect(*line.bbox)
+
+            # 1. Effacer le texte natif via redaction (rectangle blanc)
+            page.add_redact_annot(bbox, fill=(1, 1, 1))
+            page.apply_redactions(
+                images=fitz.PDF_REDACT_IMAGE_NONE if keep_images
+                       else fitz.PDF_REDACT_IMAGE_REMOVE
+            )
+
+            # 2. Réinscrire le texte modifié dans la même bbox, mêmes attributs
+            font_name = _select_pdf_font(line.bold, line.italic)
+            r, g, b   = _hex_to_rgb_float(line.color or "#000000")
+            size      = line.font_size or 11.0
+
+            try:
+                rc = page.insert_textbox(
+                    bbox, new_text,
+                    fontname=font_name, fontsize=size, color=(r, g, b),
+                    align=fitz.TEXT_ALIGN_LEFT,
+                )
+                if rc < 0:
+                    # Texte plus long : on rétrécit progressivement
+                    fitted = False
+                    for shrink in (0.90, 0.80, 0.70, 0.60):
+                        rc2 = page.insert_textbox(
+                            bbox, new_text,
+                            fontname=font_name, fontsize=size * shrink, color=(r, g, b),
+                            align=fitz.TEXT_ALIGN_LEFT,
+                        )
+                        if rc2 >= 0:
+                            fitted = True
+                            break
+                    if not fitted:
+                        warnings.append(f"span_id {span_id!r} : texte trop long pour la bbox même réduit")
+                replaced += 1
+            except Exception as e:
+                warnings.append(f"span_id {span_id!r} : insertion échouée — {e}")
+                skipped += 1
+
+        doc.save(str(pdf_out))
+    finally:
+        doc.close()
+
+    return {
+        "output_path":    pdf_out,
+        "spans_replaced": replaced,
+        "spans_skipped":  skipped,
+        "warnings":       warnings,
+    }
+
+
+# ╔════════════════════════════════════════════════════════════════════════════╗
+# ║ 10. CLI minimal                                                            ║
 # ╚════════════════════════════════════════════════════════════════════════════╝
 
 if __name__ == "__main__":

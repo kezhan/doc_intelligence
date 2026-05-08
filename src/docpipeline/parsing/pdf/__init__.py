@@ -8,6 +8,7 @@ from .tables import detect_fragmented_tables, pdf_to_excel
 # Script unique parse_pdf — point d'entrée client
 from .parse_pdf import (
     parse_pdf,
+    apply_changes,
     inspect_pdf,
     classify_inspection,
     build_doc_summary,
@@ -50,6 +51,7 @@ __all__ = [
     "pdf_to_excel",
     # parse_pdf (script principal)
     "parse_pdf",
+    "apply_changes",
     "inspect_pdf",
     "classify_inspection",
     "build_doc_summary",
