@@ -4,9 +4,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-`docpipeline` — modular document-processing toolkit (PDF/Word/Excel/PPTX/email). The repo also contains the **chapter 6 question-understanding layer** ([src/question/](src/question/)), and design articles + diagrams in [docs/](docs/).
+`docpipeline` — modular document-processing toolkit (PDF/Word/Excel/PPTX/email). The repo also contains the **chapter 6 question-understanding layer** ([src/question/](src/question/)), design articles + diagrams in [docs/](docs/), and a synthetic-invoice corpus generator (notebook 07) for testing address-block detection.
 
-Comments and docstrings are in **French**; match that convention when editing existing files. Code identifiers stay English.
+**Language convention** — code identifiers are always English. For prose:
+- docpipeline core (comments, docstrings, errors) and notebooks 04–06 are in **French**.
+- The chapter-6 design article ([docs/06_question_layer.md](docs/06_question_layer.md)) is in French.
+- Notebooks **07+** are in **English (US style)** per recent direction (USD currency, MM/DD/YYYY dates, US labels like *BILL FROM* / *BILL TO*).
+
+Match the convention of the file you're editing.
 
 PEP 621 / src layout: package lives in [src/docpipeline/](src/docpipeline/), build config in [pyproject.toml](pyproject.toml). Python ≥ 3.10.
 
@@ -113,12 +118,33 @@ All three are committed. Workflow detail in [docs/diagrams/README.md](docs/diagr
 
 ## Notebooks convention
 
+- **`notebooks/` contains only `.ipynb` files** — no `.py` helpers. If a notebook needs a helper, inline it as a cell. Per repo policy ("notebooks only", commit `43ad3de`).
 - Filenames prefixed by chapter number: `NN_<topic>.ipynb` (e.g., `06_understanding_question.ipynb`).
 - Markdown section titles: `## N. Titre` for top-level, `## N.M Titre` for sub-sections. **No `§` symbol, no em-dash** between number and title.
+- Outputs go in [notebooks/_outputs/](notebooks/_outputs/) — each notebook creates its own subdirectory there (e.g. `_outputs/invoices/`).
+
+Two notebook styles coexist in the repo:
+
+1. **Chapter walkthroughs** — multi-cell, didactic (e.g., [06_understanding_question.ipynb](notebooks/06_understanding_question.ipynb), [07_generate_invoice_pdfs.ipynb](notebooks/07_generate_invoice_pdfs.ipynb)). Mirror the structure of the matching `docs/NN_*.md` article when one exists.
+2. **Minimal usage examples (`_js` suffix)** — exactly 3 cells: 1 markdown intro + 1 `pip install` cell + 1 actual call cell with output. Examples : [05_parse_pdf_js.ipynb](notebooks/05_parse_pdf_js.ipynb), [05_bench_parse_pdf_js.ipynb](notebooks/05_bench_parse_pdf_js.ipynb), [06_question_parsing_js.ipynb](notebooks/06_question_parsing_js.ipynb). Pattern enforced by commit `af9e4d1` ("1 markdown + 1 install + 1 cellule appel"). Don't add multi-section walkthroughs to a `_js` notebook.
+
+### Notebook 07 — synthetic invoice generator
+
+[notebooks/07_generate_invoice_pdfs.ipynb](notebooks/07_generate_invoice_pdfs.ipynb) builds a varied PDF invoice corpus using `reportlab` + `Faker` (en_US locale) and demonstrates a **pure heuristic** for address-block detection (`detect_address_zones`): split the upper third of the page on the midline → leftmost cluster = sender, rightmost = recipient. Stable on ~85% of US B2B invoices.
+
+Key reusables exported by the notebook (copy into `src/` if needed for production):
+
+- `Address`, `LineItem`, `Invoice`, `InvoiceStyle` — data models with structural toggles (logo style, label phrasings, optional fields)
+- `random_invoice()` / `random_style()` — Faker en_US generators with deterministic seeds
+- `generate_invoice(inv, out_path, style)` — reportlab US-Letter rendering (themes, fonts, banner/box/no logo)
+- `detect_address_zones(pdf)` → `(sender_bbox, recipient_bbox)` — geometry-only heuristic, no LLM
+- `render_with_bboxes(pdf, png)` — visual validation overlay
+
+Adversarial PDFs in `_outputs/invoices/_adversarial/` deliberately violate the convention (sender on right, no labels) to stress-test future detectors. Reportlab built-in fonts: use the `_BOLD` / `_ITALIC` mappings from the notebook — `Times-Bold` and `Times-Italic`, not `Times-Roman-Bold` (which doesn't exist).
 
 ## Testing & data
 
 - Fixtures in [tests/fixtures/](tests/fixtures/) (small `.pdf`/`.docx`/`.xlsx` samples for unit tests). Tests reference these by path; don't move them.
-- Real corpus in [data/](data/) — insurance contracts, SFCR reports, finance docs, the *Attention Is All You Need* paper, etc. Used by demo notebooks and benchmarks ([notebooks/bench_parse_pdf_js.ipynb](notebooks/bench_parse_pdf_js.ipynb)). Not unit-tested.
+- Real corpus in [data/](data/) — insurance contracts, SFCR reports, finance docs, the *Attention Is All You Need* paper, etc. Used by demo notebooks and benchmarks ([notebooks/05_bench_parse_pdf_js.ipynb](notebooks/05_bench_parse_pdf_js.ipynb)). Not unit-tested.
 - Some tests touch private helpers (`_decide_page_type`, `_normalize`, etc.) in `parse_pdf.py` — keep those names stable.
 - Adobe / MSWord / LibreOffice / Docling / Tesseract are all **optional**. Tests must skip cleanly when an engine is unavailable; conversion code already does this — follow the existing `_*_available()` pattern.
