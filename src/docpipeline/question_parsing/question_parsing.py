@@ -156,15 +156,75 @@ _DISAMBIG_PATTERNS = (
     re.compile(r"\bexcluding\s+(?:the\s+)?([\w\sàâéèêëïîôùûüç-]{2,30}?)(?=[\.,;]|$)", re.IGNORECASE),
 )
 
-# ─── Intent (heuristique mots-clés) ───────────────────────────────────────────
-# Ordre = priorité : on cherche d'abord les signaux spécifiques, extract en
-# avant-dernier (sinon « what is » est mangé par yes_no « is »).
+# ─── Intent (3 valeurs alignées sur le chapitre 6 Kezhan) ────────────────────
+# qa = défaut (information extraction). Détection explicite pour summarization
+# et translation seulement ; tout le reste tombe en qa.
 _INTENT_KEYWORDS = (
-    ("compare",     ("compare", "comparer", "consistent", "cohérent", " vs ", "versus")),
-    ("aggregate",   ("list all", "lister tout", "tous les", "all the", "ensemble des", "rank", "classer")),
-    ("conditional", ("if so", "si oui", "and if", "et si")),
-    ("extract",     ("what is", "quel est", "quelle est", "find", "trouve", "donne-moi", "give me")),
-    ("yes_no",      ("does ", " is ", "est-ce que", "y a-t-il", "has ", "have you", "are there")),
+    ("summarization", (
+        "summarize", "summarise", "résume", "résumé", "give me an overview",
+        "overview of", "what does this say", "donne un résumé", "synthétise",
+        "executive summary",
+    )),
+    ("translation", (
+        "translate", "traduis", "traduire", "in french", "in english",
+        "in plain english", "en anglais", "en français", "render as",
+        "version anglaise", "version française",
+    )),
+    # défaut implicite : "qa"
+)
+
+
+# ─── expected_answer_shape (5 shapes principales + 3 extensions) ─────────────
+# Détecté à parsing time, AVANT retrieval, à partir de la formulation seule.
+# Pilote la mise en forme de la réponse côté generation.
+#
+# ORDRE = priorité (le 1er match gagne). Le boolean strict est en dernier
+# AVANT le défaut text, sinon « What is the premium ? » matcherait `is` et
+# serait classé boolean.
+_SHAPE_RULES = (
+    # entity — qui / what is the X (name, party, insurer)
+    ("entity", (
+        r"\bwho\b", r"\bqui\b", r"\bwhom\b",
+        r"\bwhat is the (?:name|insurer|insured|policy holder|seller|buyer)\b",
+        r"\b(?:nom de|identité|raison sociale)\b",
+    )),
+    # date — quand / when / date / délai
+    ("date", (
+        r"\bwhen\b", r"\bquand\b",
+        r"\b(?:effective\s+date|date\s+(?:d['e]'?effet|de\s+début|de\s+fin|d'expiration))\b",
+        r"\bcoverage start", r"\bdate\s+(?:du|de)\b",
+        r"\b(?:start(?:ing)?|end(?:ing)?|expiration|expiry|deadline)\s+date\b",
+        r"\b(?:valid until|valable jusqu|expire|échéance)\b",
+    )),
+    # amount — combien / montant / prime / cost / price
+    ("amount", (
+        r"\bhow much\b", r"\bcombien\b",
+        r"\b(?:cost|price|prime|premium|montant|tarif|cotisation|amount|value)\b",
+        r"\b(?:plafond|franchise|limite|limit|deductible|cap)\b",
+    )),
+    # table — compare / vs / dans un tableau
+    ("table", (
+        r"\bcompare(?:r|s|d)?\b",
+        r"\bdans un tableau\b", r"\bin a table\b", r"\btabular\b",
+        r"\b(?:vs|versus)\b",
+        r"\bdiff(?:é|e)rence(?:s)?\b",
+    )),
+    # list — quels sont / list all / énumère / what are the
+    ("list", (
+        r"\blist all\b", r"\bliste\s+(?:de|des)\b",
+        r"\b(?:quels?|quelles?)\s+sont\b",
+        r"\bwhat are the\b",
+        r"\b(?:tous|toutes)\s+les\b", r"\ball the\b",
+        r"\bensemble des\b", r"\bénumère",
+    )),
+    # boolean — STRICT : la question doit COMMENCER par un auxiliaire yes/no,
+    # sinon « What is X » serait faussement matché.
+    ("boolean", (
+        r"^\s*(?:does|do|did|is|are|was|were|has|have|can|could|will|would|should|may|might)\b.+\?\s*$",
+        r"^\s*(?:est-ce\s+que|y\s+a-t-il|peut-on|doit-on|peuvent-ils|sont-ils)\b",
+        r"\b(?:yes\s*/\s*no|oui\s*/\s*non|true\s*/\s*false|vrai\s*/\s*faux)\b",
+    )),
+    # défaut implicite : "text"
 )
 
 
@@ -287,14 +347,44 @@ def extract_disambiguation(question: str) -> tuple[Optional[str], list[str]]:
 
 
 def classify_intent(question: str) -> str:
-    """Classer l'intent en {extract, compare, aggregate, conditional, yes_no}."""
+    """
+    Classer l'intent dans les 3 valeurs du chapitre 6 Kezhan :
+    `qa` (défaut), `summarization`, `translation`. Chaque intent route vers
+    un pipeline downstream différent.
+    """
     if not question:
-        return "extract"
+        return "qa"
     q_lower = question.lower()
     for intent, keywords in _INTENT_KEYWORDS:
         if any(kw in q_lower for kw in keywords):
             return intent
-    return "extract"
+    return "qa"
+
+
+def extract_answer_shape(question: str) -> str:
+    """
+    Détecter la forme de réponse attendue à partir de la formulation seule.
+
+    5 shapes principales + 3 extensions (chapitre 6 Kezhan) :
+      - amount  : « combien », « how much », « prime », « cost », …
+      - date    : « when », « quand », « date d'effet », …
+      - list    : « list all », « quels sont les », « toutes les … »
+      - table   : « compare », « vs », « tableau comparatif »
+      - text    : défaut (pas de signal explicite)
+      - boolean : questions oui/non explicites (« does X », « est-ce que »)
+      - entity  : « who », « qui », « what is the name »
+
+    NE DÉPEND PAS du document ni du retrieval — calculé une fois côté parsing,
+    propage déterministiquement vers la génération.
+    """
+    if not question:
+        return "text"
+    q_lower = question.lower()
+    for shape, patterns in _SHAPE_RULES:
+        for pat in patterns:
+            if re.search(pat, q_lower):
+                return shape
+    return "text"
 
 
 # ╔════════════════════════════════════════════════════════════════════════════╗
@@ -338,6 +428,19 @@ def _run_disambig(q: str, _ctx: dict) -> Optional[dict]:
     return {"disambiguation": instruction, "must_distinguish": distractors}
 
 
+def _run_answer_shape(q: str, _ctx: dict) -> Optional[dict]:
+    """
+    Toujours actif (le défaut `text` est utile en aval pour la génération).
+
+    Override : si l'intent est `summarization` ou `translation`, la shape par
+    défaut est `text` (un résumé n'est pas une liste, une traduction non plus).
+    """
+    intent = classify_intent(q)
+    if intent in ("summarization", "translation"):
+        return {"expected_answer_shape": "text"}
+    return {"expected_answer_shape": extract_answer_shape(q)}
+
+
 # ╔════════════════════════════════════════════════════════════════════════════╗
 # ║ 5. REGISTRE BRICKS                                                         ║
 # ╚════════════════════════════════════════════════════════════════════════════╝
@@ -352,6 +455,7 @@ BRICKS: dict[str, Brick] = {
     "document_hint":   Brick("document_hint",   "retrieval",  _run_document_hint),
     "format":          Brick("format",          "generation", _run_format),
     "disambiguation":  Brick("disambiguation",  "generation", _run_disambig),
+    "answer_shape":    Brick("answer_shape",    "generation", _run_answer_shape),
 }
 
 
@@ -368,6 +472,7 @@ PRESETS: dict[str, list[str]] = {
         "document_hint",
         "format",
         "disambiguation",
+        "answer_shape",
     ],
     "word": [
         "anchor_keywords",
@@ -376,18 +481,21 @@ PRESETS: dict[str, list[str]] = {
         "document_hint",
         "format",
         "disambiguation",
+        "answer_shape",
     ],
     "excel": [
         "anchor_keywords",
         "document_hint",
         "format",
         "disambiguation",
+        "answer_shape",
     ],
     "email": [
         "anchor_keywords",
         "document_hint",
         "format",
         "disambiguation",
+        "answer_shape",
     ],
     "pptx": [
         "anchor_keywords",
@@ -397,6 +505,7 @@ PRESETS: dict[str, list[str]] = {
         "document_hint",
         "format",
         "disambiguation",
+        "answer_shape",
     ],
 }
 
