@@ -4,16 +4,15 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-`docpipeline` — modular document-processing toolkit (PDF/Word/Excel/PPTX/email). The repo also contains the **chapter 6 question-understanding layer** ([src/question/](src/question/)), design articles + diagrams in [docs/](docs/), and a synthetic-invoice corpus generator (notebook 07) for testing address-block detection.
+`docpipeline` — modular document-processing toolkit (PDF/Word/Excel/PPTX/email). The repo also contains a question-understanding layer ([src/question/](src/question/)), design notes + diagrams in [docs/](docs/), and notebooks demonstrating each piece.
 
 **Language convention** — code identifiers are always English. For prose:
-- docpipeline core (comments, docstrings, errors) and notebooks 04–06 are in **French**.
-- The chapter-6 design article ([docs/06_question_layer.md](docs/06_question_layer.md)) is in French.
+- Core code (comments, docstrings, errors) in [src/docpipeline/](src/docpipeline/) and the earlier notebooks (04–06) are in **French**.
 - Notebooks **07+** are in **English (US style)** per recent direction (USD currency, MM/DD/YYYY dates, US labels like *BILL FROM* / *BILL TO*).
 
 Match the convention of the file you're editing.
 
-PEP 621 / src layout: package lives in [src/docpipeline/](src/docpipeline/), build config in [pyproject.toml](pyproject.toml). Python ≥ 3.10.
+PEP 621 / src layout: package at [src/docpipeline/](src/docpipeline/), build config in [pyproject.toml](pyproject.toml). Python ≥ 3.10.
 
 ## Commands
 
@@ -33,11 +32,88 @@ python -X utf8 demo.py 1           # single demo (1..7)
 
 docpipeline --help                 # CLI entry point ([src/docpipeline/cli.py](src/docpipeline/cli.py))
 
-python docs/diagrams/_build_excalidraw.py   # regenerate .excalidraw sources from script
+python docs/diagrams/_build_excalidraw.py   # regenerate .excalidraw sources
 python docs/diagrams/_export_png.py         # SVG → PNG (2× scale via resvg-py)
 ```
 
 **Windows console:** stdout/stderr must be reconfigured to UTF-8 — see boilerplate in [src/docpipeline/cli.py:25-32](src/docpipeline/cli.py#L25-L32) and [demo.py:6-13](demo.py#L6-L13). Always invoke Python with `-X utf8` on Windows when scripts print accented French.
+
+## Repository layout
+
+```
+src/
+├── docpipeline/        Main toolkit (4 transverse stages × N formats — see "docpipeline" below)
+└── question/           Question-understanding layer (registry + presets — see "question layer" below)
+
+notebooks/              .ipynb files only — no .py helpers. Organized by topic chapter:
+├── 01_document_parsing/{pdf,word,excel,pptx,email}/   per-format parsing (pdf/word/pptx also have a toc/ subfolder)
+├── 02_question_parsing/                               question-understanding layer
+├── 03_retrieval/
+├── 04_generation/
+├── 05_rendering/                                       reconstitution / annotation / conversion outputs
+├── 06_pipeline/                                        end-to-end orchestration
+└── _outputs/                                           Per-notebook output subdirectories
+
+docs/                   Design notes (.md) + diagram chain (docs/diagrams/)
+└── diagrams/           .excalidraw sources → .svg → .png
+
+tests/                  pytest suite
+└── fixtures/           Small samples (.pdf, .docx, .xlsx) for unit tests
+
+data/                   Real corpus for demos and benchmarks (not unit-tested)
+
+demo.py                 7 interactive demos against tests/fixtures/
+```
+
+## Notebooks — conventions
+
+**Filenames:** `NN_<topic>.ipynb` with a two-digit numeric prefix (e.g., `06_understanding_question.ipynb`). The number is a sort key within the parent folder, nothing more — drop any "chapter / article / part" framing in prose. The *chapter* is the parent folder (`01_document_parsing/` … `06_pipeline/`).
+
+**Notebooks-only rule:** `notebooks/` contains **only `.ipynb` files**. No `.py` helpers alongside. If a notebook needs a helper, **inline it as a cell**. Per repo policy (commit `43ad3de` "Suppression des .py dans notebooks/ — notebooks only").
+
+**Section title style** in markdown cells:
+- Top-level: `## N. Titre`
+- Sub-section: `## N.M Titre`
+- **No `§` symbol, no em-dash** between number and title.
+- **No double-numbering**: write `## 3. Parsing`, not `## 3. Block 1 — Parsing`. The number conveys order; the prefix is filler.
+
+**Outputs**: each notebook writes to its own subdirectory in `notebooks/_outputs/` (e.g. `_outputs/invoices/`). Outputs are not unit-tested and may be regenerated freely.
+
+**Two notebook shapes** coexist — pick the right one before writing:
+
+1. **Walkthrough** — multi-cell, didactic. Mix of markdown explanations and code cells with intermediate prints. Use this when the notebook teaches the API piece by piece. Examples: [06_understanding_question.ipynb](notebooks/02_question_parsing/06_understanding_question.ipynb), [07_generate_invoice_pdfs.ipynb](notebooks/01_document_parsing/pdf/07_generate_invoice_pdfs.ipynb).
+2. **Minimal usage (`_js` suffix)** — **exactly 3 cells**: one markdown intro, one `pip install` cell, one actual call cell with output. Use this when you only want to show *"here is how you call X on a real input, here is what comes out"*. Examples: [05_parse_pdf_js.ipynb](notebooks/01_document_parsing/pdf/05_parse_pdf_js.ipynb), [05_bench_parse_pdf_js.ipynb](notebooks/01_document_parsing/pdf/05_bench_parse_pdf_js.ipynb), [06_question_parsing_js.ipynb](notebooks/02_question_parsing/06_question_parsing_js.ipynb). Pattern enforced by commit `af9e4d1` ("1 markdown + 1 install + 1 cellule appel"). **Do not** add multi-section walkthroughs to a `_js` notebook.
+
+**Imports**: notebooks import from `docpipeline` and `src.question`; they don't redefine helpers. If a helper isn't in the package yet, add it there first.
+
+**Paths**: notebooks reference `tests/fixtures/<subdir>/` for unit-test inputs and `data/<subdir>/` for the real corpus. Outputs always go to `notebooks/_outputs/<subdir>/`.
+
+**Cell hygiene**: `execution_count` not null, cells in order, no stale outputs from an older version of the code.
+
+## Scripts — conventions
+
+A "script" here is a small Python file you run from the command line. Two locations only:
+
+- **Per-content scripts live next to what they generate.** Example: [docs/diagrams/_build_excalidraw.py](docs/diagrams/_build_excalidraw.py) and [docs/diagrams/_export_png.py](docs/diagrams/_export_png.py) live alongside the diagrams they produce, **not** in a top-level `scripts/` folder. The prefix `_` (e.g. `_build_excalidraw.py`) marks a non-public helper.
+- **Cross-cutting CLI**: extend the existing `docpipeline` CLI in [src/docpipeline/cli.py](src/docpipeline/cli.py) rather than adding standalone scripts at the repo root.
+
+**Single-use helpers for one notebook** belong inside that notebook as a cell, not as a separate `.py` (the "notebooks-only" rule above).
+
+## Code organization — `src/` package layout
+
+The packages are organized **by topic** (parsing, conversion, retrieval, ...), not chronologically. When a topic grows past 2-3 files, it becomes a **subpackage** (folder with `__init__.py`).
+
+**One method = one file**, named after the method. Examples: [retrieval/sql_backend.py](src/docpipeline/retrieval/sql_backend.py) (FTS5 backend), [conversion/_adobe_converter.py](src/docpipeline/conversion/_adobe_converter.py). Avoid generic-operation file names (`top_k.py`, `helpers.py`, `utils.py`) — they say nothing about what the file actually implements. Helpers used by exactly one method live in that method's file.
+
+**The `__init__.py` is the public surface** — re-export public names so callers do `from docpipeline.retrieval import SQLRetriever`, not `from docpipeline.retrieval.sql_backend import SQLRetriever`.
+
+**Variable naming — describe content, not operation.** Locals and DataFrames are named after what they hold:
+- ✅ `parsed_question`, `retrieved_pages_df`, `bboxes_df`, `filtered_line_df`
+- ❌ `parsed`, `result_df`, `out`, `tmp`, `df3`, `q2`
+
+Past participles as bare names (`parsed`, `filtered`, `extracted`) name an operation, not a thing — append the noun. Single-letter abbreviations are only OK in tight math loops (`i`, `j`, `n`).
+
+**Python 3.10+ syntax**: `int | None`, `list[Foo]`, no `from typing import Optional, List, Dict`. Type hints on every public function. Pydantic for structured I/O. DataFrames over ORM for cross-layer data exchange.
 
 ## Architecture — docpipeline: "4 briques × N formats"
 
@@ -60,7 +136,7 @@ src/docpipeline/
 └── excel_agent/       Natural-language → SQL agent over an ingested .xlsx
 ```
 
-### Where the LLM is — and is not (docpipeline)
+### Where the LLM is — and is not
 
 Core design rule: **LLM is reserved for translation, summarization, and the Excel SQL agent.** Everything else (classification, extraction, conversion, retrieval, deduplication, table detection, PDF reconstitution) is heuristics + specialized libraries with **zero LLM**. Don't add LLM calls to parsing/conversion/retrieval bricks.
 
@@ -72,15 +148,15 @@ Engine selection is driven by `_select_engine()` and the PDF classifier's catego
 
 ### `parse_pdf` — single-script PDF inspection: [parsing/pdf/parse_pdf.py](src/docpipeline/parsing/pdf/parse_pdf.py)
 
-One client entry point, **one `fitz` open**, four outputs (`line_df`, `image_df`, `page_df`, `doc_summary` dict). Combines TODO-001 (source classification by metadata) with page-by-page typing (8 `page_type` values × 4 `extraction_strategy` values). All logic is pure functions + dataclasses, intentionally self-contained — don't refactor it into multiple modules.
+One client entry point, **one `fitz` open**, four outputs (`line_df`, `image_df`, `page_df`, `doc_summary` dict). Combines source classification by metadata with page-by-page typing (8 `page_type` values × 4 `extraction_strategy` values). All logic is pure functions + dataclasses, intentionally self-contained — don't refactor it into multiple modules.
 
 ### Standardized DataFrames
 
 Parsers emit DataFrames with stable columns (`page`, `line`, `bbox`, `style`, `span_id`, ...) so retrieval, translation, and reconstitution can chain without reparsing. The `span_id` is what makes round-trip translation (Word DOCX or PDF reconstruct) work — preserve it when manipulating extraction output.
 
-## Architecture — question layer: [src/question/](src/question/)
+## Architecture — question layer ([src/question/](src/question/))
 
-Implements the design from [docs/06_question_layer.md](docs/06_question_layer.md). Public entry point:
+Public entry point:
 
 ```python
 from src.question import understand_question
@@ -99,38 +175,24 @@ The pipeline ([pipeline.py](src/question/pipeline.py)) is intentionally tiny. Al
 
 **LLM rule (mirrors the docpipeline rule, applied to the question layer):** LLM stays **inside** individual bricks that need it (`rewrite`, `decompose`, `spell`). Never use an LLM as orchestrator/gating around the bricks. Static `document_type`-driven presets capture ~95% of routing decisions; agentic gating costs latency, determinism, and the LLM bill.
 
-Notebook companion: [notebooks/06_understanding_question.ipynb](notebooks/06_understanding_question.ipynb) walks through each brick + the full `understand_question` API.
+## Docs & diagrams
 
-## Docs & diagrams: [docs/](docs/)
-
-Design articles (chapter format `NN_<topic>.md`) live in [docs/](docs/). Diagrams follow a deterministic chain:
+Design notes live as `NN_<topic>.md` in [docs/](docs/). Diagrams follow a deterministic chain:
 
 ```
 .excalidraw  ───►  .svg  ───►  .png
-   source         vectoriel    pixel (consumed by article)
+   source         vectoriel    pixel (consumed by .md via ![](...))
 ```
 
 - `.excalidraw` (JSON) — sources, edited via VS Code extension `pomdtr.excalidraw-editor` (visual canvas) or as JSON. Initially generated by [_build_excalidraw.py](docs/diagrams/_build_excalidraw.py) (deterministic seeds, idempotent).
-- `.svg` — exported manually from Excalidraw editor.
-- `.png` — re-rendered by [_export_png.py](docs/diagrams/_export_png.py) (resvg-py, 2× scale). Articles reference `.png` because it's universally accepted (Medium, GitHub, other CMS).
+- `.svg` — exported manually from the Excalidraw editor.
+- `.png` — re-rendered by [_export_png.py](docs/diagrams/_export_png.py) (resvg-py, 2× scale). `.md` files reference `.png` because it's universally accepted (Medium, GitHub, other CMS).
 
-All three are committed. Workflow detail in [docs/diagrams/README.md](docs/diagrams/README.md).
+All three are committed. Full workflow detail in [docs/diagrams/README.md](docs/diagrams/README.md).
 
-## Notebooks convention
+## Notebook 07 — synthetic invoice generator
 
-- **`notebooks/` contains only `.ipynb` files** — no `.py` helpers. If a notebook needs a helper, inline it as a cell. Per repo policy ("notebooks only", commit `43ad3de`).
-- Filenames prefixed by chapter number: `NN_<topic>.ipynb` (e.g., `06_understanding_question.ipynb`).
-- Markdown section titles: `## N. Titre` for top-level, `## N.M Titre` for sub-sections. **No `§` symbol, no em-dash** between number and title.
-- Outputs go in [notebooks/_outputs/](notebooks/_outputs/) — each notebook creates its own subdirectory there (e.g. `_outputs/invoices/`).
-
-Two notebook styles coexist in the repo:
-
-1. **Chapter walkthroughs** — multi-cell, didactic (e.g., [06_understanding_question.ipynb](notebooks/06_understanding_question.ipynb), [07_generate_invoice_pdfs.ipynb](notebooks/07_generate_invoice_pdfs.ipynb)). Mirror the structure of the matching `docs/NN_*.md` article when one exists.
-2. **Minimal usage examples (`_js` suffix)** — exactly 3 cells: 1 markdown intro + 1 `pip install` cell + 1 actual call cell with output. Examples : [05_parse_pdf_js.ipynb](notebooks/05_parse_pdf_js.ipynb), [05_bench_parse_pdf_js.ipynb](notebooks/05_bench_parse_pdf_js.ipynb), [06_question_parsing_js.ipynb](notebooks/06_question_parsing_js.ipynb). Pattern enforced by commit `af9e4d1` ("1 markdown + 1 install + 1 cellule appel"). Don't add multi-section walkthroughs to a `_js` notebook.
-
-### Notebook 07 — synthetic invoice generator
-
-[notebooks/07_generate_invoice_pdfs.ipynb](notebooks/07_generate_invoice_pdfs.ipynb) builds a varied PDF invoice corpus using `reportlab` + `Faker` (en_US locale) and demonstrates a **pure heuristic** for address-block detection (`detect_address_zones`): split the upper third of the page on the midline → leftmost cluster = sender, rightmost = recipient. Stable on ~85% of US B2B invoices.
+[notebooks/01_document_parsing/pdf/07_generate_invoice_pdfs.ipynb](notebooks/01_document_parsing/pdf/07_generate_invoice_pdfs.ipynb) builds a varied PDF invoice corpus using `reportlab` + `Faker` (en_US locale) and demonstrates a **pure heuristic** for address-block detection (`detect_address_zones`): split the upper third of the page on the midline → leftmost cluster = sender, rightmost = recipient. Stable on ~85% of US B2B invoices.
 
 Key reusables exported by the notebook (copy into `src/` if needed for production):
 
@@ -145,6 +207,8 @@ Adversarial PDFs in `_outputs/invoices/_adversarial/` deliberately violate the c
 ## Testing & data
 
 - Fixtures in [tests/fixtures/](tests/fixtures/) (small `.pdf`/`.docx`/`.xlsx` samples for unit tests). Tests reference these by path; don't move them.
-- Real corpus in [data/](data/) — insurance contracts, SFCR reports, finance docs, the *Attention Is All You Need* paper, etc. Used by demo notebooks and benchmarks ([notebooks/05_bench_parse_pdf_js.ipynb](notebooks/05_bench_parse_pdf_js.ipynb)). Not unit-tested.
+- Real corpus in [data/](data/) — grouped by source. Used by demo notebooks and benchmarks ([notebooks/01_document_parsing/pdf/05_bench_parse_pdf_js.ipynb](notebooks/01_document_parsing/pdf/05_bench_parse_pdf_js.ipynb)). Not unit-tested.
+- Each PDF in `data/<subdir>/` may have a companion `data/<subdir>/<doc_stem>.md` describing length, TOC quality, parsing quirks, and what it's good for demonstrating — read it before re-parsing.
 - Some tests touch private helpers (`_decide_page_type`, `_normalize`, etc.) in `parse_pdf.py` — keep those names stable.
 - Adobe / MSWord / LibreOffice / Docling / Tesseract are all **optional**. Tests must skip cleanly when an engine is unavailable; conversion code already does this — follow the existing `_*_available()` pattern.
+- Never use proprietary client documents as test fixtures. Use small synthetic samples (e.g. notebook 07's invoice generator) or openly-licensed public corpora.

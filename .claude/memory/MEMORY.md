@@ -1,0 +1,3 @@
+- [Notebook numbering convention](feedback_notebook_numbering.md) — préfixer chaque notebook par `NN_` (numéro de chapitre à 2 chiffres)
+- [Notebook section title style](feedback_notebook_section_titles.md) — `## N. Titre` ou `## N.M Titre`, pas de `§` ni d'em-dash
+- [Démarche dev — notebook-first, sortie stockable](feedback_dev_workflow.md) — inputs explicites → fonctions + explications → résultat persisté (JSON ou DataFrame → SQL)
