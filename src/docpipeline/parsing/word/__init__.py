@@ -1,7 +1,9 @@
 """Word parsing sub-package — native XML exploitation."""
 
-# Nouvelle API (parse_word.py) — version exhaustive avec apply_changes
-from .parse_word import apply_changes, parse_word
+# Nouvelle API (parse_word.py) — extraction exhaustive
+# Le rendering (modify -> rebuild) vit dans
+# docpipeline.rendering.word.build_document (build_word_document)
+from .parse_word import parse_word
 
 # Legacy (parser.py + consolidator.py) — gardés pour ne pas casser les
 # consommateurs existants. Accessibles via leurs chemins directs si besoin :
@@ -12,7 +14,6 @@ from .parser import WordParseResult
 __all__ = [
     # Nouvelle API
     "parse_word",
-    "apply_changes",
     # Legacy
     "WordParseResult",
     "consolidate_word_pdf",

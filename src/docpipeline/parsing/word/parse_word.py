@@ -548,60 +548,7 @@ def parse_word(docx_path) -> dict:
 
 
 # ╔════════════════════════════════════════════════════════════════════════════╗
-# ║ 6. RECONSTRUCTION — apply_changes                                          ║
-# ╚════════════════════════════════════════════════════════════════════════════╝
-
-def apply_changes(
-    docx_in,
-    span_changes: dict[str, str],
-    docx_out,
-) -> Path:
-    """
-    Reconstruit un .docx en remplaçant le texte de certains spans, en
-    préservant tous les styles d'origine.
-
-    Args:
-        docx_in       : chemin du .docx source
-        span_changes  : dict {span_id: nouveau_texte} — seuls les spans listés
-                        sont modifiés ; les autres gardent leur texte original.
-        docx_out      : chemin du .docx de sortie
-
-    Returns:
-        Path du .docx de sortie
-
-    Le matching se fait par `span_id` (format `w_<para>_<run>`), pas par
-    contenu textuel — robuste aux textes dupliqués.
-    """
-    docx_in  = Path(docx_in)
-    docx_out = Path(docx_out)
-    doc = Document(str(docx_in))
-
-    n_changed = 0
-    for para_idx, para in enumerate(doc.paragraphs):
-        for run_idx, run in enumerate(para.runs):
-            span_id = f"w_{para_idx}_{run_idx}"
-            if span_id in span_changes:
-                run.text = span_changes[span_id]
-                n_changed += 1
-
-    # Walk tables symétrique au parse_word()
-    for table_idx, table in enumerate(doc.tables):
-        for row_idx, row in enumerate(table.rows):
-            for col_idx, cell in enumerate(row.cells):
-                for cell_para_idx, cell_para in enumerate(cell.paragraphs):
-                    for cell_run_idx, cell_run in enumerate(cell_para.runs):
-                        sid = (f"w_t_{table_idx}_{row_idx}_{col_idx}"
-                               f"_{cell_para_idx}_{cell_run_idx}")
-                        if sid in span_changes:
-                            cell_run.text = span_changes[sid]
-                            n_changed += 1
-
-    doc.save(str(docx_out))
-    return docx_out
-
-
-# ╔════════════════════════════════════════════════════════════════════════════╗
-# ║ 7. CLI minimal                                                             ║
+# ║ 6. CLI minimal                                                             ║
 # ╚════════════════════════════════════════════════════════════════════════════╝
 
 if __name__ == "__main__":
