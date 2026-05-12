@@ -123,15 +123,37 @@ def _shape_type_name(shape) -> str:
 # ║ 3. EXTRACTORS                                                              ║
 # ╚════════════════════════════════════════════════════════════════════════════╝
 
-def _extract_run(run, slide_idx: int, shape_idx: int, para_idx: int, run_idx: int) -> dict:
-    """Extraction COMPLÈTE des propriétés d'un run (= span PPTX)."""
+def _extract_run(
+    run,
+    slide_idx: int,
+    shape_idx: int,
+    para_idx: int,
+    run_idx: int,
+    *,
+    table_pos: tuple[int, int] | None = None,   # (row, col) si run dans une cell de table
+) -> dict:
+    """
+    Extraction COMPLÈTE des propriétés d'un run (= span PPTX).
+
+    Si `table_pos` est fourni, le span_id encode aussi la position dans la
+    table : `pp_<slide>_<shape>_t_<row>_<col>_<para>_<run>`. Sinon format
+    classique `pp_<slide>_<shape>_<para>_<run>`.
+    """
     font = run.font
+    if table_pos is None:
+        span_id = f"pp_{slide_idx}_{shape_idx}_{para_idx}_{run_idx}"
+    else:
+        row, col = table_pos
+        span_id = f"pp_{slide_idx}_{shape_idx}_t_{row}_{col}_{para_idx}_{run_idx}"
     return {
-        "span_id":          f"pp_{slide_idx}_{shape_idx}_{para_idx}_{run_idx}",
+        "span_id":          span_id,
         "slide_index":      slide_idx,
         "shape_index":      shape_idx,
         "paragraph_index":  para_idx,
         "run_index":        run_idx,
+        "table_row":        table_pos[0] if table_pos else None,
+        "table_col":        table_pos[1] if table_pos else None,
+        "in_table":         table_pos is not None,
         "text":             run.text or "",
         "char_count":       len(run.text or ""),
         # Font
@@ -365,11 +387,27 @@ def parse_pptx(pptx_path) -> dict:
                 image_counter += 1
                 slide_images += 1
 
-            # Table
+            # Table — extraction structure + walk des runs dans chaque cell
             if _safe(lambda: shape.has_table, False):
                 tables.append(_extract_table(shape, slide_idx, shape_idx, table_counter))
                 table_counter += 1
                 slide_tables += 1
+
+                # Walk les cells pour capturer leurs runs (avec span_id dédié)
+                table = shape.table
+                for row_idx, row in enumerate(table.rows):
+                    for col_idx, cell in enumerate(row.cells):
+                        try:
+                            cell_tf = cell.text_frame
+                        except Exception:
+                            continue
+                        for para_idx, para in enumerate(cell_tf.paragraphs):
+                            for run_idx, run in enumerate(para.runs):
+                                runs.append(_extract_run(
+                                    run, slide_idx, shape_idx, para_idx, run_idx,
+                                    table_pos=(row_idx, col_idx),
+                                ))
+                                slide_runs += 1
 
         slides_meta.append(_extract_slide(slide, slide_idx, len(slide_shapes), slide_runs, slide_images, slide_tables))
 

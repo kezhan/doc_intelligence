@@ -78,29 +78,53 @@ def build_pptx_document(
     skipped: list[str] = []
     warnings: list[str] = []
 
+    def _apply_to_text_frame(tf, span_id_prefix: str) -> None:
+        """Walk paragraphs/runs d'un text_frame et remplace par span_id."""
+        nonlocal replaced, unchanged
+        for para_idx, para in enumerate(tf.paragraphs):
+            for run_idx, run in enumerate(para.runs):
+                span_id = f"{span_id_prefix}_{para_idx}_{run_idx}"
+                if span_id in runs_by_span_id:
+                    new_text = runs_by_span_id[span_id]
+                    if new_text != run.text:
+                        run.text = new_text
+                        replaced += 1
+                    else:
+                        unchanged += 1
+                else:
+                    skipped.append(span_id)
+
     for slide_idx, slide in enumerate(prs.slides):
         for shape_idx, shape in enumerate(slide.shapes):
-            if not getattr(shape, "has_text_frame", False):
-                continue
-            try:
-                tf = shape.text_frame
-            except Exception as e:
-                warnings.append(f"slide {slide_idx} shape {shape_idx} : "
-                                f"text_frame inaccessible ({e})")
-                continue
+            # Cas 1 : shape avec text_frame standard
+            if getattr(shape, "has_text_frame", False):
+                try:
+                    tf = shape.text_frame
+                    _apply_to_text_frame(tf, f"pp_{slide_idx}_{shape_idx}")
+                except Exception as e:
+                    warnings.append(f"slide {slide_idx} shape {shape_idx} : "
+                                    f"text_frame inaccessible ({e})")
 
-            for para_idx, para in enumerate(tf.paragraphs):
-                for run_idx, run in enumerate(para.runs):
-                    span_id = f"pp_{slide_idx}_{shape_idx}_{para_idx}_{run_idx}"
-                    if span_id in runs_by_span_id:
-                        new_text = runs_by_span_id[span_id]
-                        if new_text != run.text:
-                            run.text = new_text
-                            replaced += 1
-                        else:
-                            unchanged += 1
-                    else:
-                        skipped.append(span_id)
+            # Cas 2 : shape avec table → walker chaque cell.text_frame
+            if getattr(shape, "has_table", False):
+                try:
+                    table = shape.table
+                    for row_idx, row in enumerate(table.rows):
+                        for col_idx, cell in enumerate(row.cells):
+                            try:
+                                cell_tf = cell.text_frame
+                                _apply_to_text_frame(
+                                    cell_tf,
+                                    f"pp_{slide_idx}_{shape_idx}_t_{row_idx}_{col_idx}",
+                                )
+                            except Exception as e:
+                                warnings.append(
+                                    f"slide {slide_idx} shape {shape_idx} cell "
+                                    f"({row_idx},{col_idx}) : {e}"
+                                )
+                except Exception as e:
+                    warnings.append(f"slide {slide_idx} shape {shape_idx} : "
+                                    f"table inaccessible ({e})")
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     prs.save(str(output_path))
