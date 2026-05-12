@@ -38,11 +38,19 @@ from .parse_pdf import (
 
 # TOC sub-package — détection et extraction de tables des matières
 from .toc import (
+    EmptyPDFError,
+    InvalidPDFError,
+    PDFReadError,
+    PageAnalysis,
     TocDetectionResult,
+    add_dataframe_toc_to_pdf,
+    clean_toc_df,
     detect_toc,
     export_toc_to_excel,
     export_toc_to_json,
     extract_native_toc,
+    extract_native_toc_detailed,
+    extract_text_from_first_pages,
     extract_toc_by_numbering,
     extract_toc_dotted,
     extract_toc_from_links,
@@ -51,6 +59,10 @@ from .toc import (
     get_pdf_page_count,
     has_native_toc,
     nest_toc,
+    # LLM extraction — optionnel (TODO-TOC-005)
+    extract_toc_with_gpt,
+    find_toc_pages,
+    extract_raw_toc_text,
 )
 
 __all__ = [
@@ -97,8 +109,15 @@ __all__ = [
     # TOC sub-package
     "detect_toc",
     "TocDetectionResult",
+    "PageAnalysis",
+    "PDFReadError",
+    "InvalidPDFError",
+    "EmptyPDFError",
+    "extract_text_from_first_pages",
     "has_native_toc",
     "extract_native_toc",
+    "extract_native_toc_detailed",
+    "clean_toc_df",
     "nest_toc",
     "export_toc_to_json",
     "export_toc_to_excel",
@@ -108,4 +127,5 @@ __all__ = [
     "extract_toc_multiline",
     "extract_toc_from_links",
     "extract_toc_by_numbering",
+    "add_dataframe_toc_to_pdf",
 ]

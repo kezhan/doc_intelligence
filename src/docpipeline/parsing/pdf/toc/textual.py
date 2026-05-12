@@ -157,3 +157,40 @@ def extract_title_candidates(
     return title_candidates_df.sort_values(
         ["page_num", "size_diff"], ascending=[True, False]
     )
+
+
+def group_numbered_titles(toc_df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Fusionner les titres dont le numéro de section est isolé sur la ligne précédente.
+
+    Exemple courant dans les PDFs : une ligne ``"1."`` suivie de ``"Introduction"``
+    sur la même page.  La fonction retourne alors ``"1. Introduction"``.
+    """
+    if toc_df.empty:
+        return toc_df.copy()
+
+    merged_rows: list[pd.Series] = []
+    skip_next = False
+    rows = toc_df.reset_index(drop=True)
+
+    for index, row in rows.iterrows():
+        if skip_next:
+            skip_next = False
+            continue
+
+        text = str(row["text"]).strip()
+        is_section_number = text.replace(".", "").isdigit()
+        has_next_row = index + 1 < len(rows)
+
+        if is_section_number and has_next_row:
+            next_row = rows.iloc[index + 1]
+            if next_row["page_num"] == row["page_num"]:
+                merged = row.copy()
+                merged["text"] = f"{text} {next_row['text']}"
+                merged_rows.append(merged)
+                skip_next = True
+                continue
+
+        merged_rows.append(row)
+
+    return pd.DataFrame(merged_rows).reset_index(drop=True)

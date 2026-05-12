@@ -1,12 +1,4 @@
-"""
-TODO-TOC-002 — Extraction des signets natifs (bookmarks) d'un PDF.
-
-Les PDFs générés depuis Word ou une suite bureautique embarquent souvent une
-table des matières binaire via la métadonnée get_toc() de PyMuPDF. Ce module
-l'extrait sous forme de DataFrame et propose des utilitaires d'export.
-
-ZERO LLM — extraction structurelle pure, aucun modèle externe.
-"""
+"""Native PDF TOC/bookmark extraction and export helpers."""
 
 from __future__ import annotations
 
@@ -76,7 +68,83 @@ def extract_native_toc(pdf_path: str | Path) -> pd.DataFrame:
         return pd.DataFrame(columns=["level", "title", "page", "indicator"])
 
     toc_df = pd.DataFrame(toc_raw, columns=["level", "title", "page"])
-    return _add_indicator_column(toc_df)
+    return clean_toc_df(_add_indicator_column(toc_df))
+
+
+def extract_native_toc_detailed(pdf_path: str | Path) -> pd.DataFrame:
+    """
+    Extraire les signets natifs avec les métadonnées de destination PyMuPDF.
+
+    Cette fonction adapte la logique détaillée de ``ai_toc.toc.extract_toc`` au
+    contrat docpipeline.  Elle conserve ``extract_native_toc`` comme API simple
+    et ajoute les champs utiles pour audit/debug : destination interne, zoom,
+    xref, coordonnées et page affichée.
+    """
+    data: list[dict] = []
+
+    with fitz.open(str(pdf_path)) as doc:
+        toc_raw = doc.get_toc(simple=False)
+
+        for entry in toc_raw:
+            level, title, displayed_page = entry[:3]
+            dest = entry[3] if len(entry) > 3 and isinstance(entry[3], dict) else {}
+            pos_x, pos_y = _find_title_position(doc, title, displayed_page)
+
+            if isinstance(dest.get("to"), fitz.Point):
+                pos_x = dest["to"].x
+                pos_y = dest["to"].y
+
+            data.append(
+                {
+                    "level": level,
+                    "title": title,
+                    "displayed_page": displayed_page,
+                    "page": dest.get("page"),
+                    "kind": dest.get("kind"),
+                    "xref": dest.get("xref"),
+                    "zoom": dest.get("zoom"),
+                    "collapse": dest.get("collapse"),
+                    "to_x": pos_x,
+                    "to_y": pos_y,
+                }
+            )
+
+    columns = [
+        "level",
+        "title",
+        "displayed_page",
+        "page",
+        "kind",
+        "xref",
+        "zoom",
+        "collapse",
+        "to_x",
+        "to_y",
+    ]
+    return pd.DataFrame(data, columns=columns)
+
+
+def clean_toc_df(toc_df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Nettoyer un DataFrame TOC natif.
+
+    Supprime les lignes sans titre, niveau ou page valides, normalise ``page`` en
+    entier et génère ``indicator`` s'il manque.
+    """
+    if toc_df.empty:
+        return toc_df.copy()
+
+    df = toc_df.copy()
+    df["page"] = pd.to_numeric(df["page"], errors="coerce")
+    df = df.dropna(subset=["title", "level", "page"])
+    df = df[df["title"].astype(str).str.strip() != ""]
+    df = df[df["page"] >= 0]
+    df["page"] = df["page"].astype(int)
+
+    if "indicator" not in df.columns:
+        df = _add_indicator_column(df)
+
+    return df.reset_index(drop=True)
 
 
 # ── Transformation ────────────────────────────────────────────────────────────
@@ -173,6 +241,25 @@ def _add_indicator_column(toc_df: pd.DataFrame) -> pd.DataFrame:
 
     df["indicator"] = indicators
     return df
+
+
+def _find_title_position(
+    doc: fitz.Document,
+    title: str,
+    displayed_page: int,
+) -> tuple[float | None, float | None]:
+    """Best-effort lookup of the bookmark title coordinates on its displayed page."""
+    try:
+        page = doc[displayed_page - 1]
+    except Exception:
+        return None, None
+
+    needle = title.strip().lower()
+    for block in page.get_text("blocks"):
+        x0, y0, *_rest, text = block[:5]
+        if needle and needle in str(text).strip().lower():
+            return float(x0), float(y0)
+    return None, None
 
 
 _ILLEGAL_CHARS_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
