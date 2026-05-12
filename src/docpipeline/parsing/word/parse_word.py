@@ -229,16 +229,30 @@ def _extract_paragraph(para: Paragraph, para_idx: int) -> dict:
     }
 
 
-def _extract_span(run, para_idx: int, run_idx: int) -> dict:
+def _extract_span(
+    run,
+    para_idx: int,
+    run_idx: int,
+    *,
+    span_id: Optional[str] = None,
+    in_table: bool = False,
+    table_pos: Optional[tuple[int, int, int]] = None,
+) -> dict:
     """
     Extraction COMPLÈTE des propriétés d'un run (= span Word).
 
-    `span_id` au format `w_<para>_<run>` — stable et reproductible.
+    `span_id` :
+      - hors table : `w_<para>_<run>`
+      - dans table : `w_t_<table>_<row>_<col>_<para>_<run>` (passé via span_id=)
     """
     font = run.font
     is_ins, is_del = _is_track_change_run(run)
     return {
-        "span_id":          f"w_{para_idx}_{run_idx}",
+        "span_id":          span_id or f"w_{para_idx}_{run_idx}",
+        "in_table":         in_table,
+        "table_index":      table_pos[0] if table_pos else None,
+        "row_index":        table_pos[1] if table_pos else None,
+        "col_index":        table_pos[2] if table_pos else None,
         "paragraph_index":  para_idx,
         "run_index":        run_idx,
         "text":             run.text or "",
@@ -486,6 +500,23 @@ def parse_word(docx_path) -> dict:
         for run_idx, run in enumerate(para.runs):
             spans.append(_extract_span(run, para_idx, run_idx))
 
+    # Walk tables : doc.paragraphs n'inclut PAS les paragraphs des cells
+    for table_idx, table in enumerate(doc.tables):
+        for row_idx, row in enumerate(table.rows):
+            for col_idx, cell in enumerate(row.cells):
+                for cell_para_idx, cell_para in enumerate(cell.paragraphs):
+                    for cell_run_idx, cell_run in enumerate(cell_para.runs):
+                        sid = (f"w_t_{table_idx}_{row_idx}_{col_idx}"
+                               f"_{cell_para_idx}_{cell_run_idx}")
+                        spans.append(_extract_span(
+                            cell_run,
+                            para_idx=cell_para_idx,
+                            run_idx=cell_run_idx,
+                            span_id=sid,
+                            in_table=True,
+                            table_pos=(table_idx, row_idx, col_idx),
+                        ))
+
     images = [_extract_image(s, i) for i, s in enumerate(doc.inline_shapes)]
     tables = [_extract_table(t, i) for i, t in enumerate(doc.tables)]
     sections = [_extract_section(s, i) for i, s in enumerate(doc.sections)]
@@ -552,6 +583,18 @@ def apply_changes(
             if span_id in span_changes:
                 run.text = span_changes[span_id]
                 n_changed += 1
+
+    # Walk tables symétrique au parse_word()
+    for table_idx, table in enumerate(doc.tables):
+        for row_idx, row in enumerate(table.rows):
+            for col_idx, cell in enumerate(row.cells):
+                for cell_para_idx, cell_para in enumerate(cell.paragraphs):
+                    for cell_run_idx, cell_run in enumerate(cell_para.runs):
+                        sid = (f"w_t_{table_idx}_{row_idx}_{col_idx}"
+                               f"_{cell_para_idx}_{cell_run_idx}")
+                        if sid in span_changes:
+                            cell_run.text = span_changes[sid]
+                            n_changed += 1
 
     doc.save(str(docx_out))
     return docx_out
