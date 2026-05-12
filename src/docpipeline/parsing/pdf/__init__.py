@@ -36,6 +36,23 @@ from .parse_pdf import (
     STRATEGY_SKIP,
 )
 
+# TOC sub-package — détection et extraction de tables des matières
+from .toc import (
+    TocDetectionResult,
+    detect_toc,
+    export_toc_to_excel,
+    export_toc_to_json,
+    extract_native_toc,
+    extract_toc_by_numbering,
+    extract_toc_dotted,
+    extract_toc_from_links,
+    extract_toc_multiline,
+    filter_pdfs_with_native_toc,
+    get_pdf_page_count,
+    has_native_toc,
+    nest_toc,
+)
+
 __all__ = [
     # Legacy (à archiver, cf. task #6)
     "PDFCategory",
@@ -77,4 +94,18 @@ __all__ = [
     "STRATEGY_OCR",
     "STRATEGY_HYBRID",
     "STRATEGY_SKIP",
+    # TOC sub-package
+    "detect_toc",
+    "TocDetectionResult",
+    "has_native_toc",
+    "extract_native_toc",
+    "nest_toc",
+    "export_toc_to_json",
+    "export_toc_to_excel",
+    "get_pdf_page_count",
+    "filter_pdfs_with_native_toc",
+    "extract_toc_dotted",
+    "extract_toc_multiline",
+    "extract_toc_from_links",
+    "extract_toc_by_numbering",
 ]
