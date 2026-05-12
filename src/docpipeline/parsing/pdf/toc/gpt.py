@@ -178,7 +178,7 @@ def _extract_structured_with_openai(
 
 
 def extract_toc_with_gpt(
-    pdf_path,
+    pdf_path: str | Path,
     api_key: str,
     *,
     max_pages: int = DEFAULT_MAX_PAGES,

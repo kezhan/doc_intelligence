@@ -46,8 +46,10 @@ def filter_pdfs_with_native_toc(
     Input  : liste de chemins PDF
     Output : (pdfs_avec_toc, pdfs_sans_toc)
     """
-    with_toc = [p for p in pdf_paths if has_native_toc(p)]
-    without_toc = [p for p in pdf_paths if not has_native_toc(p)]
+    with_toc: list[str | Path] = []
+    without_toc: list[str | Path] = []
+    for p in pdf_paths:
+        (with_toc if has_native_toc(p) else without_toc).append(p)
     return with_toc, without_toc
 
 

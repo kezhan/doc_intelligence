@@ -106,7 +106,7 @@ __all__ = [
     "STRATEGY_OCR",
     "STRATEGY_HYBRID",
     "STRATEGY_SKIP",
-    # TOC sub-package
+    # TOC — détection heuristique
     "detect_toc",
     "TocDetectionResult",
     "PageAnalysis",
@@ -114,6 +114,14 @@ __all__ = [
     "InvalidPDFError",
     "EmptyPDFError",
     "extract_text_from_first_pages",
+    "score_page",
+    "TOC_KEYWORDS",
+    "has_toc_keyword",
+    "find_dotted_leader_lines",
+    "find_lines_ending_with_number",
+    "find_hierarchical_structure",
+    "calculate_short_line_density",
+    # TOC — extraction native (signets)
     "has_native_toc",
     "extract_native_toc",
     "extract_native_toc_detailed",
@@ -123,9 +131,18 @@ __all__ = [
     "export_toc_to_excel",
     "get_pdf_page_count",
     "filter_pdfs_with_native_toc",
+    # TOC — extraction textuelle
     "extract_toc_dotted",
     "extract_toc_multiline",
+    "extract_title_candidates",
+    "group_numbered_titles",
+    # TOC — extraction par liens
     "extract_toc_from_links",
     "extract_toc_by_numbering",
+    # TOC — écriture de signets
     "add_dataframe_toc_to_pdf",
+    # TOC — LLM fallback (optionnel, pip install 'docpipeline[llm]')
+    "extract_toc_with_gpt",
+    "find_toc_pages",
+    "extract_raw_toc_text",
 ]
