@@ -15,6 +15,8 @@ from pathlib import Path
 import fitz  # PyMuPDF
 import pandas as pd
 
+from ._utils import add_toc_metadata, apply_consensus_page_offset
+
 
 # ── 1. Lignes pointillées ─────────────────────────────────────────────────────
 
@@ -32,10 +34,13 @@ def extract_toc_dotted(pdf_path: str | Path) -> pd.DataFrame:
              — vide si aucune ligne à points leaders n'est trouvée
     """
     toc_entries: list[dict] = []
+    page_texts: list[str] = []
 
     with fitz.open(str(pdf_path)) as doc:
-        for page_index, page in enumerate(doc):
-            for line in page.get_text("text").splitlines():
+        for page_index, page in enumerate(doc, start=1):
+            page_text = page.get_text("text").replace("\xa0", " ")
+            page_texts.append(page_text)
+            for line in page_text.splitlines():
                 match = _DOTTED_PATTERN.match(line.strip())
                 if match:
                     title = match.group(1).strip()
@@ -44,10 +49,15 @@ def extract_toc_dotted(pdf_path: str | Path) -> pd.DataFrame:
                         toc_entries.append({
                             "text": title,
                             "page_num": page_num,
-                            "source_page": page_index + 1,
+                            "source_page": page_index,
                         })
 
-    return pd.DataFrame(toc_entries)
+    toc_df = pd.DataFrame(
+        toc_entries,
+        columns=["text", "page_num", "source_page"],
+    )
+    toc_df = apply_consensus_page_offset(toc_df, page_texts)
+    return add_toc_metadata(toc_df)
 
 
 # ── 2. Extraction multiline ───────────────────────────────────────────────────
@@ -66,10 +76,12 @@ def extract_toc_multiline(pdf_path: str | Path) -> pd.DataFrame:
     Output : DataFrame colonnes [text, page_num, source_page]
     """
     toc_entries: list[dict] = []
+    page_texts: list[str] = []
 
     with fitz.open(str(pdf_path)) as doc:
-        for page_index, page in enumerate(doc):
+        for page_index, page in enumerate(doc, start=1):
             text = page.get_text("text").replace("\xa0", " ")
+            page_texts.append(text)
             lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
 
             buffer_line: str | None = None
@@ -82,7 +94,7 @@ def extract_toc_multiline(pdf_path: str | Path) -> pd.DataFrame:
                         toc_entries.append({
                             "text": match.group(1).strip(),
                             "page_num": int(match.group(2)),
-                            "source_page": page_index + 1,
+                            "source_page": page_index,
                         })
                         buffer_line = None
                         continue
@@ -98,7 +110,7 @@ def extract_toc_multiline(pdf_path: str | Path) -> pd.DataFrame:
                             toc_entries.append({
                                 "text": title,
                                 "page_num": int(page_num_str),
-                                "source_page": page_index + 1,
+                                "source_page": page_index,
                             })
                     else:
                         buffer_line = line
@@ -106,11 +118,16 @@ def extract_toc_multiline(pdf_path: str | Path) -> pd.DataFrame:
                     toc_entries.append({
                         "text": buffer_line.rsplit(maxsplit=1)[0],
                         "page_num": int(line),
-                        "source_page": page_index + 1,
+                        "source_page": page_index,
                     })
                     buffer_line = None
 
-    return pd.DataFrame(toc_entries)
+    toc_df = pd.DataFrame(
+        toc_entries,
+        columns=["text", "page_num", "source_page"],
+    )
+    toc_df = apply_consensus_page_offset(toc_df, page_texts)
+    return add_toc_metadata(toc_df)
 
 
 # ── 3. Titraille par style ────────────────────────────────────────────────────

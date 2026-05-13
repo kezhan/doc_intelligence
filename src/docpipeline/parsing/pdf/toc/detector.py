@@ -18,13 +18,14 @@ DEFAULT_THRESHOLD: float = 0.50
 
 def detect_toc(
     pdf_path: str | Path,
-    max_pages: int = DEFAULT_MAX_PAGES,
+    max_pages: int | None = None,
     threshold: float = DEFAULT_THRESHOLD,
 ) -> TocDetectionResult:
     """
     Detect whether a PDF contains a likely table of contents.
 
-    Only the first ``max_pages`` pages are inspected.  Each page receives a
+    By default the full document is inspected; pass ``max_pages`` to restrict
+    the scan to the first pages only. Each page receives a
     score in ``[0, 1]`` based on textual signals: TOC keywords, dotted leaders,
     lines ending with page numbers, hierarchical numbering and short-line
     density.  Pages whose score is at least ``threshold`` are returned as

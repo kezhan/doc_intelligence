@@ -16,10 +16,12 @@ def add_dataframe_toc_to_pdf(
     clear_existing: bool = True,
 ) -> int:
     """
-    Add bookmarks to a PDF using a DataFrame with ``text`` and ``page_num`` columns.
+    Add bookmarks to a PDF using a DataFrame with ``text``/``page_num`` or
+    ``title``/``page`` columns.
 
-    Returns the number of bookmarks written.  ``page_num`` is interpreted as the
-    displayed PDF page number used by extraction helpers in this package.
+    Returns the number of bookmarks written. ``page_num`` / ``page`` is
+    interpreted as the displayed 1-based PDF page number used by extraction
+    helpers in this package.
 
     If the DataFrame contains a ``level`` column (e.g. from ``extract_native_toc``
     or ``extract_toc_with_gpt``), bookmark hierarchy is preserved.  Otherwise all
@@ -30,11 +32,7 @@ def add_dataframe_toc_to_pdf(
     if not source.exists():
         raise FileNotFoundError(f"PDF file not found: {source}")
 
-    required_columns = {"text", "page_num"}
-    missing_columns = required_columns - set(toc_df.columns)
-    if missing_columns:
-        missing = ", ".join(sorted(missing_columns))
-        raise ValueError(f"TOC DataFrame is missing required columns: {missing}")
+    toc_df = _normalise_bookmark_dataframe(toc_df)
 
     has_level_column = "level" in toc_df.columns
 
@@ -61,3 +59,17 @@ def add_dataframe_toc_to_pdf(
         doc.save(str(output_path))
 
     return len(bookmarks)
+
+
+def _normalise_bookmark_dataframe(toc_df: pd.DataFrame) -> pd.DataFrame:
+    """Accept both extraction schemas: ``text/page_num`` and ``title/page``."""
+    columns = set(toc_df.columns)
+    if {"text", "page_num"}.issubset(columns):
+        return toc_df.copy()
+    if {"title", "page"}.issubset(columns):
+        renamed = toc_df.rename(columns={"title": "text", "page": "page_num"}).copy()
+        return renamed
+
+    raise ValueError(
+        "TOC DataFrame must contain either columns text/page_num or title/page"
+    )

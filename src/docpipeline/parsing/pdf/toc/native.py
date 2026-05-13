@@ -9,6 +9,8 @@ from pathlib import Path
 import fitz  # PyMuPDF
 import pandas as pd
 
+from ._utils import add_page_end_column, add_toc_metadata
+
 
 # ── Détection ─────────────────────────────────────────────────────────────────
 
@@ -60,17 +62,17 @@ def extract_native_toc(pdf_path: str | Path) -> pd.DataFrame:
     Extraire le TOC natif d'un PDF sous forme de DataFrame.
 
     Input  : chemin PDF
-    Output : DataFrame colonnes [level, title, page, indicator]
+    Output : DataFrame colonnes [level, title, page, page_end, indicator]
              — vide (0 lignes) si aucun signet n'est présent
     """
     with fitz.open(str(pdf_path)) as doc:
         toc_raw = doc.get_toc()
 
     if not toc_raw:
-        return pd.DataFrame(columns=["level", "title", "page", "indicator"])
+        return pd.DataFrame(columns=["level", "title", "page", "page_end", "indicator"])
 
     toc_df = pd.DataFrame(toc_raw, columns=["level", "title", "page"])
-    return clean_toc_df(_add_indicator_column(toc_df))
+    return clean_toc_df(toc_df)
 
 
 def extract_native_toc_detailed(pdf_path: str | Path) -> pd.DataFrame:
@@ -131,20 +133,21 @@ def clean_toc_df(toc_df: pd.DataFrame) -> pd.DataFrame:
     Nettoyer un DataFrame TOC natif.
 
     Supprime les lignes sans titre, niveau ou page valides, normalise ``page`` en
-    entier et génère ``indicator`` s'il manque.
+    entier comme numéro de page affiché 1-based, puis génère ``indicator`` et
+    ``page_end`` s'ils manquent.
     """
     if toc_df.empty:
-        return toc_df.copy()
+        return add_page_end_column(add_toc_metadata(toc_df.copy()), page_column="page")
 
     df = toc_df.copy()
     df["page"] = pd.to_numeric(df["page"], errors="coerce")
     df = df.dropna(subset=["title", "level", "page"])
     df = df[df["title"].astype(str).str.strip() != ""]
-    df = df[df["page"] >= 0]
+    df = df[df["page"] >= 1]
     df["page"] = df["page"].astype(int)
 
-    if "indicator" not in df.columns:
-        df = _add_indicator_column(df)
+    df = add_toc_metadata(df)
+    df = add_page_end_column(df, page_column="page")
 
     return df.reset_index(drop=True)
 
@@ -225,24 +228,7 @@ def export_toc_to_excel(toc_df: pd.DataFrame, output_path: str | Path) -> None:
 
 def _add_indicator_column(toc_df: pd.DataFrame) -> pd.DataFrame:
     """Ajouter une colonne 'indicator' hiérarchique (L1, L1.1, L1.2, …)."""
-    df = toc_df.copy()
-    counters: dict[int, int] = {}
-    indicators: list[str] = []
-
-    for _, row in df.iterrows():
-        level = int(row["level"])
-
-        for lvl in list(counters.keys()):
-            if lvl > level:
-                del counters[lvl]
-
-        counters[level] = counters.get(level, 0) + 1
-        indicators.append(
-            "L" + ".".join(str(counters[lvl]) for lvl in sorted(counters) if lvl <= level)
-        )
-
-    df["indicator"] = indicators
-    return df
+    return add_toc_metadata(toc_df)
 
 
 def _find_title_position(

@@ -41,7 +41,7 @@ from .patterns import (
     find_lines_ending_with_number,
     has_toc_keyword,
 )
-from .reader import extract_text_from_first_pages
+from .reader import extract_text_from_first_pages, normalize_text
 from .scoring import score_page
 from .textual import (
     extract_title_candidates,
@@ -59,6 +59,7 @@ __all__ = [
     "InvalidPDFError",
     "EmptyPDFError",
     "extract_text_from_first_pages",
+    "normalize_text",
     "score_page",
     "TOC_KEYWORDS",
     "has_toc_keyword",

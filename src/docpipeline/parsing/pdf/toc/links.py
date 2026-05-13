@@ -14,6 +14,8 @@ from pathlib import Path
 import fitz  # PyMuPDF
 import pandas as pd
 
+from ._utils import add_toc_metadata
+
 
 _CLEAN_LEADING_NUMBERS_RE = re.compile(r"^\s*\d+[.\)]*\s*")
 _CLEAN_DOTS_RE = re.compile(r"\.{3,}")
@@ -32,7 +34,7 @@ def _clean_toc_text(text: str) -> str:
 
 def extract_toc_from_links(
     pdf_path: str | Path,
-    max_pages: int = 10,
+    max_pages: int | None = None,
 ) -> pd.DataFrame:
     """
     TODO-TOC-004a — Extraire les entrées TOC via les hyperliens internes.
@@ -42,13 +44,14 @@ def extract_toc_from_links(
     TOC cliquable (Word vers PDF, Adobe Acrobat, etc.).
 
     Input  : chemin PDF, nombre de pages à scanner
-    Output : DataFrame colonnes [text, page_num]
+    Output : DataFrame colonnes [text, page_num, level, indicator]
              — vide si aucun hyperlien interne n'est trouvé
     """
     toc_entries: list[dict] = []
 
     with fitz.open(str(pdf_path)) as doc:
-        for i in range(min(max_pages, doc.page_count)):
+        page_limit = doc.page_count if max_pages is None else min(max_pages, doc.page_count)
+        for i in range(page_limit):
             page = doc[i]
             for link in page.get_links():
                 if link.get("kind") == 1 and "page" in link:
@@ -61,12 +64,12 @@ def extract_toc_from_links(
                                 "page_num": link["page"] + 1,
                             })
 
-    return pd.DataFrame(toc_entries)
+    return add_toc_metadata(pd.DataFrame(toc_entries, columns=["text", "page_num"]))
 
 
 def extract_toc_by_numbering(
     pdf_path: str | Path,
-    max_pages: int = 5,
+    max_pages: int | None = None,
     footer_ratio: float = 0.10,
 ) -> pd.DataFrame:
     """
@@ -76,12 +79,13 @@ def extract_toc_by_numbering(
     footer (footer_ratio × hauteur de page) pour ne pas capturer la pagination.
 
     Input  : chemin PDF, nombre de pages à scanner, ratio footer à ignorer
-    Output : DataFrame colonnes [text, page_num]
+    Output : DataFrame colonnes [text, page_num, level, indicator]
     """
     toc_entries: list[dict] = []
 
     with fitz.open(str(pdf_path)) as doc:
-        for i in range(min(max_pages, doc.page_count)):
+        page_limit = doc.page_count if max_pages is None else min(max_pages, doc.page_count)
+        for i in range(page_limit):
             page = doc[i]
             footer_threshold = page.rect.height * (1 - footer_ratio)
 
@@ -101,4 +105,4 @@ def extract_toc_by_numbering(
                                 "page_num": int(match.group(2)),
                             })
 
-    return pd.DataFrame(toc_entries)
+    return add_toc_metadata(pd.DataFrame(toc_entries, columns=["text", "page_num"]))
