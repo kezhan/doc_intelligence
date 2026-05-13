@@ -44,6 +44,11 @@ tests/fixtures/sinistres.db
 extracted.txt
 _repo_src/
 
+# Quarto render outputs (regenerated from .qmd source)
+notebooks/**/*.html
+notebooks/**/*_files/
+.quarto/
+
 # Type checker
 .mypy_cache/
 .ruff_cache/
