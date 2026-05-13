@@ -1,0 +1,150 @@
+---
+title: '`build_pptx_document` — rendering PPTX (step 2 du build order tome 2)'
+jupyter: python3
+---
+
+
+Module testé : [`src/docpipeline/rendering/pptx/build_document.py`](../../src/docpipeline/rendering/pptx/build_document.py).
+
+## Le pattern transversal
+
+```
+extract  : parse_pptx(source)              → runs_df avec span_id stable
+modify   : on remplace .text de chaque run par le texte traduit
+rebuild  : build_pptx_document(runs_df, source, output)
+           → ouvre source comme template, walk slides/shapes/runs (et
+             cells de tables), replace .text par span_id, save
+```
+
+Le `span_id` distingue les runs classiques (`pp_<slide>_<shape>_<para>_<run>`) et les runs dans les cells de tables (`pp_<slide>_<shape>_t_<row>_<col>_<para>_<run>`).
+
+## Démo en 2 temps
+
+1. **Round-trip identité** — smoke test step 2 du tome 2.
+2. **Traduction FR → EN complète** (titres, paragraphes, runs avec styles, **et cellules de tableau**) via dictionnaire métier. Output dans `notebooks/_outputs/pptx_translation/contrat_assurance_EN_js.pptx`.
+
+
+```{python}
+#| execution: {iopub.execute_input: '2026-05-12T13:37:27.926161Z', iopub.status.busy: '2026-05-12T13:37:27.925572Z', iopub.status.idle: '2026-05-12T13:37:49.775463Z', shell.execute_reply: '2026-05-12T13:37:49.773825Z'}
+# À exécuter une seule fois : installer le package en mode editable
+import sys
+!{sys.executable} -m pip install -q -e .
+```
+
+```{python}
+#| execution: {iopub.execute_input: '2026-05-12T13:37:49.836381Z', iopub.status.busy: '2026-05-12T13:37:49.836017Z', iopub.status.idle: '2026-05-12T13:37:52.407587Z', shell.execute_reply: '2026-05-12T13:37:52.405251Z'}
+# 1) Round-trip identite (smoke test step 2)
+import pandas as pd
+from pathlib import Path
+from IPython.display import display, Markdown
+from docpipeline.parsing.pptx.parse_pptx import parse_pptx
+from docpipeline.rendering.pptx.build_document import build_pptx_document
+
+SRC          = Path('tests/fixtures/contrat_assurance.pptx')
+OUT_ROUND    = Path('notebooks/_outputs/pptx_translation/contrat_assurance_roundtrip_js.pptx')
+OUT_TRANS_FR = Path('notebooks/_outputs/pptx_translation/contrat_assurance_EN_js.pptx')
+OUT_ROUND.parent.mkdir(parents=True, exist_ok=True)
+
+pd.set_option('display.max_colwidth', 100)
+
+result_src = parse_pptx(SRC)
+runs_df = result_src['runs_df']
+
+rt_result = build_pptx_document(runs_df, SRC, OUT_ROUND)
+
+display(Markdown('### 1. Round-trip identite — smoke test step 2'))
+display(pd.DataFrame([
+    {'metric': 'runs source',           'value': len(runs_df)},
+    {'metric': 'runs in tables',        'value': int(runs_df['in_table'].sum())},
+    {'metric': 'runs replaced',         'value': rt_result['runs_replaced']},
+    {'metric': 'runs unchanged',        'value': rt_result['runs_unchanged']},
+    {'metric': 'runs skipped',          'value': rt_result['runs_skipped']},
+    {'metric': 'output bytes',          'value': OUT_ROUND.stat().st_size},
+    {'metric': 'source bytes',          'value': SRC.stat().st_size},
+]))
+
+rt_runs = parse_pptx(OUT_ROUND)['runs_df']
+same_ids = (runs_df['span_id'].values == rt_runs['span_id'].values).all()
+same_txt = (runs_df['text'].values == rt_runs['text'].values).all()
+display(Markdown(f"**span_ids preserves** : `{same_ids}` &nbsp;&nbsp; **textes identiques** : `{same_txt}`"))
+```
+
+```{python}
+#| execution: {iopub.execute_input: '2026-05-12T13:37:52.412355Z', iopub.status.busy: '2026-05-12T13:37:52.411490Z', iopub.status.idle: '2026-05-12T13:37:52.490513Z', shell.execute_reply: '2026-05-12T13:37:52.488291Z'}
+# 2) Demo translation FR -> EN via dictionnaire (titres + paragraphes + cells de tableau)
+FR_TO_EN = {
+    # Slide 1 - Titre
+    "Contrat d'assurance":                                                       "Insurance Contract",
+    "Conditions G\u00e9n\u00e9rales \u2014 Pr\u00e9sentation 2026":             "General Conditions \u2014 2026 Presentation",
+    # Slide 2 - Bullets
+    "1. Garanties principales":                                                  "1. Main coverage",
+    "Garantie IA (Individual Accident)":                                         "IA coverage (Individual Accident)",
+    "Garantie BI (Business Interruption)":                                       "BI coverage (Business Interruption)",
+    "Responsabilit\u00e9 Civile (RC)":                                           "Civil Liability (RC)",
+    "Plafond global : 200 000 EUR":                                              "Overall limit: 200,000 EUR",
+    # Slide 3 - Runs mixtes
+    "2. Franchise et d\u00e9lais":                                               "2. Deductible and deadlines",
+    "La franchise applicable est de ":                                           "The applicable deductible is ",
+    "300 EUR par sinistre":                                                      "300 EUR per claim",
+    ". Toute d\u00e9claration doit intervenir dans un d\u00e9lai de ":           ". Any claim must be reported within ",
+    "5 jours ouvr\u00e9s":                                                       "5 business days",
+    ".":                                                                          ".",
+    "IMPORTANT : ":                                                              "IMPORTANT: ",
+    "le non-respect de ce d\u00e9lai entra\u00eene la d\u00e9ch\u00e9ance de garantie.": "failure to meet this deadline forfeits coverage.",
+    # Slide 4 - Titre + cells de tableau
+    "3. Tableau des garanties":                                                  "3. Coverage table",
+    "Garantie":                                                                  "Coverage",
+    "Plafond":                                                                   "Limit",
+    "Franchise":                                                                 "Deductible",
+    "IA \u2014 Individual Accident":                                             "IA \u2014 Individual Accident",
+    "BI \u2014 Business Interruption":                                           "BI \u2014 Business Interruption",
+    "RC \u2014 Responsabilit\u00e9 Civile":                                      "RC \u2014 Civil Liability",
+    "50 000 EUR":                                                                "50,000 EUR",
+    "100 000 EUR":                                                               "100,000 EUR",
+    "200 000 EUR":                                                               "200,000 EUR",
+    "1 000 EUR":                                                                 "1,000 EUR",
+    "300 EUR":                                                                   "300 EUR",
+    "0 EUR":                                                                     "0 EUR",
+}
+
+translated = runs_df.copy()
+translated['text'] = translated['text'].map(lambda t: FR_TO_EN.get(t, t))
+
+n_translated = (translated['text'] != runs_df['text']).sum()
+display(Markdown(f"### 2. Translation FR -> EN appliquee sur {n_translated} / {len(runs_df)} runs"))
+
+tr_result = build_pptx_document(translated, SRC, OUT_TRANS_FR)
+display(pd.DataFrame([
+    {'metric': 'runs replaced',  'value': tr_result['runs_replaced']},
+    {'metric': 'runs unchanged', 'value': tr_result['runs_unchanged']},
+    {'metric': 'runs skipped',   'value': tr_result['runs_skipped']},
+    {'metric': 'output bytes',   'value': OUT_TRANS_FR.stat().st_size},
+]))
+```
+
+```{python}
+#| execution: {iopub.execute_input: '2026-05-12T13:37:52.496145Z', iopub.status.busy: '2026-05-12T13:37:52.495562Z', iopub.status.idle: '2026-05-12T13:37:52.636980Z', shell.execute_reply: '2026-05-12T13:37:52.632981Z'}
+# 3) Verification : on re-parse le PPTX traduit
+tr_runs = parse_pptx(OUT_TRANS_FR)['runs_df']
+
+compare_df = pd.DataFrame({
+    'span_id':     runs_df['span_id'].values,
+    'in_table':    runs_df['in_table'].values,
+    'FR (avant)':  runs_df['text'].values,
+    'EN (apres)':  tr_runs['text'].values,
+    'bold':        runs_df['bold'].values,
+    'italic':      runs_df['italic'].values,
+})
+display(Markdown(f"### 3. Comparaison avant / apres — tous les runs (incluant cells de tableau)"))
+display(compare_df)
+
+checks = []
+for col in ['font_name', 'font_size_pt', 'bold', 'italic', 'underline', 'color']:
+    same = (runs_df[col].fillna('').astype(str) == tr_runs[col].fillna('').astype(str)).all()
+    checks.append({'attribute': col, 'preserved': 'OK' if same else 'DIFF'})
+display(Markdown('### 4. Styles preserves apres traduction ?'))
+display(pd.DataFrame(checks))
+
+display(Markdown(f"\n>>> Ouvre `{OUT_TRANS_FR}` dans PowerPoint pour valider visuellement."))
+```
+

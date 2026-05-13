@@ -1,0 +1,129 @@
+---
+title: '`parse_pptx` — extraction d''un .pptx en DataFrames'
+jupyter: python3
+---
+
+
+Module testé : [`src/docpipeline/parsing/pptx/parse_pptx.py`](../../../src/docpipeline/parsing/pptx/parse_pptx.py).
+
+## Sortie de `parse_pptx(pptx)`
+
+| Sortie | Contenu |
+|---|---|
+| `slide_df`     | 1 ligne = 1 slide (layout, n_shapes, n_runs, n_images, n_tables, has_notes) |
+| `shape_df`     | 1 ligne = 1 shape (slide, type, position, dimensions, has_text/table/image) |
+| `paragraph_df` | 1 ligne = 1 paragraphe de texte (slide, shape, paragraph_index, text, level, alignment) |
+| `runs_df`      | 1 ligne = 1 run (`span_id` `pp_<slide>_<shape>_<para>_<run>`, text, font_name, font_size, bold, italic, underline, color, hyperlink) |
+| `image_df`     | 1 ligne = 1 image embarquée (position, dimensions) |
+| `table_df`     | 1 ligne = 1 table (n_rows, n_cols) |
+| `doc_summary`  | JSON synthèse : metadata, source_tool, n_slides, n_runs_bold/italic/with_color, has_speaker_notes, layout_counts |
+
+Le `span_id` (format `pp_<slide>_<shape>_<para>_<run>`) est stable et reproductible — clé pour un futur cycle extract → modify → rebuild (translation PPTX).
+
+## Démo
+
+Le notebook crée d'abord une fixture `tests/fixtures/contrat_assurance.pptx` (4 slides : titre, bullets, paragraphe avec runs mixtes, table + speaker notes), puis l'extrait avec `parse_pptx`. Pas de LLM (règle CLAUDE.md).
+
+
+```{python}
+#| execution: {iopub.execute_input: '2026-05-11T18:27:08.918179Z', iopub.status.busy: '2026-05-11T18:27:08.917560Z', iopub.status.idle: '2026-05-11T18:28:21.433475Z', shell.execute_reply: '2026-05-11T18:28:21.419799Z'}
+# À exécuter une seule fois : installer le package en mode editable
+import sys
+!{sys.executable} -m pip install -q -e .
+```
+
+```{python}
+#| execution: {iopub.execute_input: '2026-05-11T18:28:22.222838Z', iopub.status.busy: '2026-05-11T18:28:22.220202Z', iopub.status.idle: '2026-05-11T18:28:24.103849Z', shell.execute_reply: '2026-05-11T18:28:24.095215Z'}
+# 1) Génération de la fixture .pptx (si absente)
+from pathlib import Path
+from pptx import Presentation
+from pptx.util import Inches
+from pptx.dml.color import RGBColor
+
+FIXTURE = Path('tests/fixtures/contrat_assurance.pptx')
+FIXTURE.parent.mkdir(parents=True, exist_ok=True)
+
+if not FIXTURE.exists():
+    prs = Presentation()
+    prs.slide_width  = Inches(10)
+    prs.slide_height = Inches(7.5)
+
+    # Slide 1 : Title
+    s1 = prs.slides.add_slide(prs.slide_layouts[0])
+    s1.shapes.title.text = "Contrat d'assurance"
+    s1.placeholders[1].text = "Conditions G\u00e9n\u00e9rales \u2014 Pr\u00e9sentation 2026"
+
+    # Slide 2 : Bullets
+    s2 = prs.slides.add_slide(prs.slide_layouts[1])
+    s2.shapes.title.text = "1. Garanties principales"
+    body = s2.placeholders[1].text_frame
+    body.text = "Garantie IA (Individual Accident)"
+    body.add_paragraph().text = "Garantie BI (Business Interruption)"
+    body.add_paragraph().text = "Responsabilit\u00e9 Civile (RC)"
+    p = body.add_paragraph(); p.text = "Plafond global : 200 000 EUR"
+    for r in p.runs:
+        r.font.bold = True
+        r.font.color.rgb = RGBColor(0xC0, 0x39, 0x2B)
+
+    # Slide 3 : runs mixtes (bold + italic + color)
+    s3 = prs.slides.add_slide(prs.slide_layouts[5])
+    s3.shapes.title.text = "2. Franchise et d\u00e9lais"
+    tb = s3.shapes.add_textbox(Inches(0.5), Inches(1.5), Inches(9), Inches(2))
+    tf = tb.text_frame; tf.word_wrap = True
+    p = tf.paragraphs[0]
+    p.add_run().text = "La franchise applicable est de "
+    r = p.add_run(); r.text = "300 EUR par sinistre"; r.font.bold = True
+    p.add_run().text = ". Toute d\u00e9claration doit intervenir dans un d\u00e9lai de "
+    r = p.add_run(); r.text = "5 jours ouvr\u00e9s"; r.font.italic = True; r.font.color.rgb = RGBColor(0x1F, 0x49, 0x7D)
+    p.add_run().text = "."
+    p2 = tf.add_paragraph()
+    r = p2.add_run(); r.text = "IMPORTANT : "; r.font.bold = True; r.font.color.rgb = RGBColor(0xC0, 0x39, 0x2B)
+    p2.add_run().text = "le non-respect de ce d\u00e9lai entra\u00eene la d\u00e9ch\u00e9ance de garantie."
+
+    # Slide 4 : Tableau + speaker notes
+    s4 = prs.slides.add_slide(prs.slide_layouts[5])
+    s4.shapes.title.text = "3. Tableau des garanties"
+    table = s4.shapes.add_table(4, 3, Inches(0.5), Inches(1.5), Inches(9), Inches(2.5)).table
+    table.cell(0,0).text = "Garantie";                 table.cell(0,1).text = "Plafond";        table.cell(0,2).text = "Franchise"
+    table.cell(1,0).text = "IA \u2014 Individual Accident";    table.cell(1,1).text = "50 000 EUR";     table.cell(1,2).text = "300 EUR"
+    table.cell(2,0).text = "BI \u2014 Business Interruption";  table.cell(2,1).text = "100 000 EUR";    table.cell(2,2).text = "1 000 EUR"
+    table.cell(3,0).text = "RC \u2014 Responsabilit\u00e9 Civile";  table.cell(3,1).text = "200 000 EUR";    table.cell(3,2).text = "0 EUR"
+    s4.notes_slide.notes_text_frame.text = "Cf. article 5 du contrat pour le d\u00e9tail des plafonds."
+
+    prs.save(str(FIXTURE))
+    print(f'OK fixture creee : {FIXTURE} ({FIXTURE.stat().st_size} bytes)')
+else:
+    print(f'fixture existe deja : {FIXTURE} ({FIXTURE.stat().st_size} bytes)')
+```
+
+```{python}
+#| execution: {iopub.execute_input: '2026-05-11T18:28:24.111117Z', iopub.status.busy: '2026-05-11T18:28:24.108979Z', iopub.status.idle: '2026-05-11T18:28:44.536860Z', shell.execute_reply: '2026-05-11T18:28:44.528860Z'}
+# 2) Extraction
+import pandas as pd
+from IPython.display import display, Markdown
+from docpipeline.parsing.pptx.parse_pptx import parse_pptx
+
+pd.set_option('display.max_colwidth', 100)
+
+result = parse_pptx(FIXTURE)
+
+display(Markdown('### 1. `doc_summary` — synthèse au niveau document'))
+summary_df = pd.DataFrame([{'key': k, 'value': str(v)} for k, v in result['doc_summary'].items()])
+display(summary_df)
+
+display(Markdown(f"### 2. `slide_df` — {len(result['slide_df'])} slides"))
+display(result['slide_df'])
+
+display(Markdown(f"### 3. `runs_df` — {len(result['runs_df'])} runs avec leurs styles"))
+display(result['runs_df'][['span_id', 'slide_index', 'text', 'font_name', 'font_size_pt', 'bold', 'italic', 'underline', 'color']])
+
+display(Markdown(f"### 4. `paragraph_df` — {len(result['paragraph_df'])} paragraphes"))
+display(result['paragraph_df'][['slide_index', 'shape_index', 'paragraph_index', 'text', 'level', 'alignment', 'n_runs']])
+
+display(Markdown(f"### 5. `shape_df` — {len(result['shape_df'])} shapes"))
+display(result['shape_df'][['slide_index', 'shape_index', 'shape_type', 'has_text', 'has_table', 'is_picture', 'width_pt', 'height_pt']])
+
+display(Markdown(f"### 6. `table_df` — {len(result['table_df'])} table(s) native(s)"))
+display(result['table_df'])
+```
+

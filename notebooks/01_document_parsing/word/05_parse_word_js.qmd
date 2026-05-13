@@ -1,0 +1,57 @@
+---
+title: '`parse_word` — extraction d''un .docx en DataFrames'
+jupyter: python3
+---
+
+
+Module testé : [`src/docpipeline/parsing/word/parse_word.py`](../src/docpipeline/parsing/word/parse_word.py).
+
+## Sortie de `parse_word(docx)`
+
+| Sortie | Contenu |
+|---|---|
+| `paragraph_df` | 1 ligne = 1 paragraphe (style, alignement, indents, list_level, heading_level, ...) |
+| `span_df`      | 1 ligne = 1 run (span_id, text, font_name, font_size_pt, bold, italic, underline, color, highlight, ...) |
+| `image_df`     | 1 ligne = 1 image embarquée |
+| `table_df`     | 1 ligne = 1 table (n_rows, n_cols, style, alignment) |
+| `doc_summary`  | JSON synthèse : metadata, source_tool, has_toc, has_track_changes, has_comments, has_footnotes, ... |
+
+Le `span_id` (format `w_<para_idx>_<run_idx>`) est stable et reproductible — utilisable pour un cycle ultérieur extract → modify → rebuild.
+
+Démo ci-dessous : extraction sur `tests/fixtures/contrat_assurance.docx`.
+
+
+```{python}
+#| execution: {iopub.execute_input: '2026-05-09T07:47:53.246165Z', iopub.status.busy: '2026-05-09T07:47:53.245109Z', iopub.status.idle: '2026-05-09T07:48:31.252653Z', shell.execute_reply: '2026-05-09T07:48:31.238118Z'}
+# À exécuter une seule fois : installer le package en mode editable
+import sys
+!{sys.executable} -m pip install -q -e .
+```
+
+```{python}
+#| execution: {iopub.execute_input: '2026-05-09T07:48:31.609368Z', iopub.status.busy: '2026-05-09T07:48:31.606756Z', iopub.status.idle: '2026-05-09T07:48:42.408581Z', shell.execute_reply: '2026-05-09T07:48:42.405933Z'}
+import pandas as pd
+from pathlib import Path
+from IPython.display import display, Markdown
+from docpipeline.parsing.word.parse_word import parse_word
+
+DOCX = Path('tests/fixtures/contrat_assurance.docx')
+
+pd.set_option('display.max_colwidth', 120)
+
+result = parse_word(DOCX)
+
+display(Markdown('### 1. `doc_summary` — synthèse au niveau document'))
+summary_df = pd.DataFrame([{'key': k, 'value': str(v)} for k, v in result['doc_summary'].items()])
+display(summary_df)
+
+display(Markdown(f"### 2. `span_df` — {len(result['span_df'])} spans avec leurs styles"))
+display(result['span_df'][['span_id', 'text', 'font_name', 'font_size_pt', 'bold', 'italic', 'underline', 'color']])
+
+display(Markdown(f"### 3. `paragraph_df` — {len(result['paragraph_df'])} paragraphes"))
+display(result['paragraph_df'][['paragraph_index', 'text', 'style_name', 'heading_level', 'alignment', 'is_list_item']])
+
+display(Markdown(f"### 4. `table_df` — {len(result['table_df'])} table(s) native(s)"))
+display(result['table_df'])
+```
+

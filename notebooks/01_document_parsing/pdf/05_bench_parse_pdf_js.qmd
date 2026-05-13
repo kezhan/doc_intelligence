@@ -1,0 +1,50 @@
+---
+title: Bench `parse_pdf` sur le corpus client
+jupyter: python3
+---
+
+
+Charge `bench_parse_pdf_results_js.csv` (résultats du run de `parse_pdf` sur l'intégralité des PDFs partagés par Kezhan dans `data/`) et affiche les distributions clés.
+
+## Ce que contient le bench
+
+Le CSV à la racine du repo a été produit en exécutant `parse_pdf(pdf_path)` sur **tous les PDFs de `data/`** (corpus client : `CG contrats MRH`, `annuel_reports`, `insurance`, `cmo`, `nist`, `paper`, `reports`). Pour chaque PDF, on capture : `n_pages`, `source_tool`, `content_type`, `recommended_strategy`, distribution des `page_type`, nombre de pages à OCR-iser, temps de traitement.
+
+**Objectif** : valider que `parse_pdf` tient sur le corpus réel sans erreur, et donner une vue agrégée du profil du corpus (combien de PDFs natifs, combien de mixtes, quels outils source détectés).
+
+
+```{python}
+#| execution: {iopub.execute_input: '2026-05-08T06:38:37.639968Z', iopub.status.busy: '2026-05-08T06:38:37.639148Z', iopub.status.idle: '2026-05-08T06:39:05.236451Z', shell.execute_reply: '2026-05-08T06:39:05.234293Z'}
+# À exécuter une seule fois : installer le package en mode editable
+import sys
+!{sys.executable} -m pip install -q -e .
+```
+
+```{python}
+#| execution: {iopub.execute_input: '2026-05-08T06:39:05.329274Z', iopub.status.busy: '2026-05-08T06:39:05.328597Z', iopub.status.idle: '2026-05-08T06:39:07.119462Z', shell.execute_reply: '2026-05-08T06:39:07.117079Z'}
+import pandas as pd
+from pathlib import Path
+
+df = pd.read_csv(Path('bench_parse_pdf_results_js.csv'))
+
+print(f'Total PDFs : {len(df)}')
+print(f"Total pages : {int(df['n_pages'].sum())}")
+print(f"Pages needing OCR : {int(df['pages_needing_ocr'].sum())}")
+print(f"Temps total : {df['parse_seconds'].sum():.1f}s ({df['parse_seconds'].sum()/60:.1f} min)")
+
+errors = df[df['error'].fillna('').astype(str).str.strip() != '']
+print(f"\nErreurs : {len(errors)} / {len(df)}")
+
+print('\n=== Distribution content_type ===')
+print(df['content_type'].fillna('(error)').value_counts().to_string())
+
+print('\n=== Distribution source_tool ===')
+print(df['source_tool'].fillna('(error)').value_counts().to_string())
+
+print('\n=== Distribution recommended_strategy ===')
+print(df['recommended_strategy'].fillna('(error)').value_counts().to_string())
+
+print('\n=== Par corpus ===')
+print(df.groupby('corpus').agg(n_pdfs=('path','count'), n_pages=('n_pages','sum'), avg_seconds=('parse_seconds','mean')).round(2).to_string())
+```
+
