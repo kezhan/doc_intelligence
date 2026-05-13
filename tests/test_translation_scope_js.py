@@ -217,6 +217,38 @@ def test_word_fixture_scope_none_keeps_all_runs():
     assert len(kl) == 0 and len(ks) == 0
 
 
+@pytest.mark.skipif(not FIX.exists(), reason="fixture contrat_assurance.docx absente")
+def test_word_fixture_table_cells_always_selected_when_filtered_by_paragraph():
+    """Bug fix : les cells de tableau ont paragraph_index cell-interne (=0),
+    le merge naif les filterait a tort. Convention : cells toujours selected."""
+    from docpipeline.parsing.word import parse_word
+
+    parsed = parse_word(FIX)
+    paragraph_df = parsed["paragraph_df"].copy()
+    span_df = parsed["span_df"]
+
+    # On simule un section_breadcrumb : Body sur para 0-6, Annexes sur 7-9
+    paragraph_df["section_breadcrumb"] = "Body"
+    paragraph_df.loc[
+        paragraph_df["paragraph_index"].isin([7, 8, 9]), "section_breadcrumb"
+    ] = "Annexes"
+
+    sc = TranslationScope(exclude_sections=["Annexes"])
+    sl, ss, kl, ks = apply_translation_scope(paragraph_df, span_df, sc)
+
+    # Cells toujours dans selected
+    n_cells = int(span_df["in_table"].sum())
+    assert int(ss["in_table"].sum()) == n_cells
+    # Skipped contient uniquement des body spans
+    assert (ks["in_table"] == False).all()
+    # Body spans des paragraphs Annexes (7,8,9) doivent etre dans skipped
+    expected_skipped = span_df[
+        (~span_df["in_table"].astype(bool))
+        & (span_df["paragraph_index"].isin([7, 8, 9]))
+    ]
+    assert len(ks) == len(expected_skipped)
+
+
 # -------- Conservation des types et colonnes ---------------------------------
 
 def test_columns_preserved_on_filtered_outputs():

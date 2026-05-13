@@ -196,11 +196,40 @@ def apply_translation_scope(
         )
         return selected_line_df, span_df.copy(), skipped_line_df, empty_span
 
-    selected_keys = selected_line_df[list(fk)].drop_duplicates()
-    merged = span_df.merge(selected_keys, on=list(fk), how="left", indicator=True)
-    in_selected = (merged["_merge"] == "both").to_numpy()
-    selected_span_df = span_df[in_selected].copy()
-    skipped_span_df  = span_df[~in_selected].copy()
+    # Cas Word : les spans de cellules de tableau ont un paragraph_index
+    # cell-interne (typiquement 0), pas le top-level. paragraph_df ne
+    # contient que les paragraphes top-level, donc le merge sur
+    # paragraph_index ferait des faux positifs/negatifs sur les cells.
+    # Convention : on ne filtre QUE les body spans ; les cell spans sont
+    # toujours selected (conservateur). Quand parse_word emettra un vrai
+    # `paragraph_breadcrumb` par cell, on pourra raffiner.
+    is_word_with_cells = (
+        fk == ("paragraph_index",) and "in_table" in span_df.columns
+    )
+    if is_word_with_cells:
+        body_mask = ~span_df["in_table"].astype(bool)
+        body_spans = span_df[body_mask]
+        cell_spans = span_df[~body_mask]
+
+        selected_keys = selected_line_df[list(fk)].drop_duplicates()
+        merged = body_spans.merge(
+            selected_keys, on=list(fk), how="left", indicator=True
+        )
+        body_in_selected = (merged["_merge"] == "both").to_numpy()
+        body_selected = body_spans[body_in_selected]
+        body_skipped  = body_spans[~body_in_selected]
+
+        # Cells : toujours selected (cf. commentaire ci-dessus)
+        selected_span_df = pd.concat([body_selected, cell_spans]).sort_index()
+        skipped_span_df  = body_skipped.copy()
+    else:
+        selected_keys = selected_line_df[list(fk)].drop_duplicates()
+        merged = span_df.merge(
+            selected_keys, on=list(fk), how="left", indicator=True
+        )
+        in_selected = (merged["_merge"] == "both").to_numpy()
+        selected_span_df = span_df[in_selected].copy()
+        skipped_span_df  = span_df[~in_selected].copy()
 
     return selected_line_df, selected_span_df, skipped_line_df, skipped_span_df
 
