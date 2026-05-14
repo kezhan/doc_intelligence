@@ -1,0 +1,181 @@
+---
+title: 08. PDF TOC detection and extraction
+jupyter: python3
+---
+
+
+Module under test: [`src/docpipeline/parsing/pdf/toc/`](../../../../src/docpipeline/parsing/pdf/toc/)
+
+Three complementary strategies — ZERO LLM:
+
+| Strategy | Module | When to use |
+|---|---|---|
+| **Native bookmarks** | `native.py` | PDF exported from Word / LibreOffice — bookmarks embedded in binary structure |
+| **Internal links** | `links.py` | PDF with clickable TOC — internal hyperlinks pointing to target pages |
+| **Textual extraction** | `textual.py` | Scanned or plain-text PDF — dotted leader lines, font-based title detection |
+
+The heuristic detector (`detector.py`) combines 5 text signals to assign a confidence score [0, 1]
+and identify TOC pages **before** choosing an extraction strategy.
+
+Demo corpus: `data/CG contrats MRH/` (insurance policy PDFs — diverse formats).
+
+
+```{python}
+import sys
+from pathlib import Path
+
+# Locate the repository root dynamically — works from any working directory
+# (this notebook lives at notebooks/01_document_parsing/pdf/toc/)
+def _find_repo_root(start: Path) -> Path:
+    for candidate in [start, *start.parents]:
+        if (candidate / "pyproject.toml").exists() and (candidate / "src").exists():
+            return candidate
+    raise RuntimeError("Could not locate repository root (no pyproject.toml + src/ found)")
+
+REPO_ROOT = _find_repo_root(Path.cwd().resolve())
+SRC = REPO_ROOT / "src"
+if str(SRC) not in sys.path:
+    sys.path.insert(0, str(SRC))
+
+print(f"REPO_ROOT: {REPO_ROOT}")
+print(f"SRC added to sys.path: {SRC}")
+```
+
+```{python}
+import pandas as pd
+from pathlib import Path
+from IPython.display import display, Markdown
+
+from docpipeline.parsing.pdf.toc import (
+    detect_toc,
+    has_native_toc,
+    extract_native_toc,
+    extract_toc_from_links,
+    extract_toc_by_numbering,
+    extract_toc_dotted,
+    extract_toc_multiline,
+)
+
+pd.set_option('display.max_colwidth', 120)
+
+DATA_DIR = REPO_ROOT / 'data' / 'CG contrats MRH'
+pdf_files = sorted(DATA_DIR.glob('*.pdf'))
+print(f"{len(pdf_files)} PDF files found in corpus")
+for p in pdf_files:
+    print(f"  {p.name}")
+```
+
+## 1. Heuristic detection — `detect_toc`
+
+Runs 5 text-signal checks on the first pages and returns a confidence score.
+Use this to decide which extraction strategy to apply downstream.
+
+```{python}
+detection_rows = []
+for pdf_path in pdf_files:
+    result = detect_toc(pdf_path, max_pages=5)
+    detection_rows.append({
+        'file': pdf_path.name,
+        'has_toc': result.has_toc,
+        'confidence': result.confidence,
+        'toc_pages': result.toc_pages,
+        'reason': result.reason,
+    })
+
+detection_df = pd.DataFrame(detection_rows)
+display(Markdown('### Detection results across the corpus'))
+display(detection_df)
+```
+
+## 2. Native bookmark extraction — `extract_native_toc`
+
+Extracts the binary TOC embedded in the PDF (PyMuPDF `get_toc()`). Returns a flat DataFrame
+with hierarchical `indicator` column (L1, L1.1, L1.2, …).
+
+```{python}
+native_results = []
+for pdf_path in pdf_files:
+    has_native = has_native_toc(pdf_path)
+    native_results.append({'file': pdf_path.name, 'has_native_toc': has_native})
+
+native_summary_df = pd.DataFrame(native_results)
+display(Markdown('### Native TOC availability'))
+display(native_summary_df)
+
+# Extract from first PDF that has a native TOC
+native_pdf = next((p for p in pdf_files if has_native_toc(p)), None)
+if native_pdf:
+    toc_df = extract_native_toc(native_pdf)
+    display(Markdown(f'### Native TOC — `{native_pdf.name}` ({len(toc_df)} entries)'))
+    display(toc_df)
+else:
+    print("No PDF with native bookmarks found in this corpus.")
+```
+
+## 3. Link-based extraction — `extract_toc_from_links`
+
+Scans internal hyperlinks on the first pages. Typical output of Word → PDF export with
+"create bookmarks from headings" option.
+
+```{python}
+for pdf_path in pdf_files[:3]:  # limit to 3 for readability
+    links_df = extract_toc_from_links(pdf_path, max_pages=10)
+    if not links_df.empty:
+        display(Markdown(f'### Links TOC — `{pdf_path.name}` ({len(links_df)} entries)'))
+        display(links_df.head(10))
+    else:
+        print(f"{pdf_path.name}: no internal links found")
+```
+
+## 4. Text-based extraction — `extract_toc_dotted` / `extract_toc_multiline`
+
+Pattern-matching on raw text: dotted leader lines and multi-line leader patterns.
+Works on any PDF where `parse_pdf` can extract native text (strategy = `native`).
+
+```{python}
+for pdf_path in pdf_files[:3]:  # limit to 3 for readability
+    dotted_df = extract_toc_dotted(pdf_path)
+    multiline_df = extract_toc_multiline(pdf_path)
+
+    display(Markdown(f'### Textual extraction — `{pdf_path.name}`'))
+    display(Markdown(f'**Dotted leaders** ({len(dotted_df)} entries)'))
+    display(dotted_df.head(10) if not dotted_df.empty else pd.DataFrame({'result': ['none found']}))
+
+    display(Markdown(f'**Multiline leaders** ({len(multiline_df)} entries)'))
+    display(multiline_df.head(10) if not multiline_df.empty else pd.DataFrame({'result': ['none found']}))
+```
+
+## 5. Strategy selection summary
+
+Decision logic: prefer native > links > textual (in order of precision).
+The heuristic detector result guides the choice.
+
+```{python}
+strategy_rows = []
+for pdf_path in pdf_files:
+    detection = detect_toc(pdf_path)
+    
+    if has_native_toc(pdf_path):
+        strategy = 'native'
+        entries = len(extract_native_toc(pdf_path))
+    else:
+        links_df = extract_toc_from_links(pdf_path)
+        if not links_df.empty:
+            strategy = 'links'
+            entries = len(links_df)
+        else:
+            dotted_df = extract_toc_dotted(pdf_path)
+            strategy = 'textual'
+            entries = len(dotted_df)
+
+    strategy_rows.append({
+        'file': pdf_path.name,
+        'confidence': detection.confidence,
+        'strategy_selected': strategy,
+        'entries_found': entries,
+    })
+
+display(Markdown('### Strategy selection per document'))
+display(pd.DataFrame(strategy_rows))
+```
+

@@ -4,18 +4,36 @@ from __future__ import annotations
 
 from . import patterns
 
-WEIGHT_KEYWORD: float = 0.40
-WEIGHT_DOTTED_LEADERS: float = 0.30
-WEIGHT_LINES_WITH_NUMBER: float = 0.20
-WEIGHT_HIERARCHICAL: float = 0.20
-WEIGHT_SHORT_LINE_DENSITY: float = 0.10
+WEIGHT_KEYWORD: int = 3
+WEIGHT_DOTTED_LEADERS: int = 2
+WEIGHT_NUMERIC_LINE_RATIO: int = 2
+WEIGHT_LINK_DENSITY: int = 2
+WEIGHT_EARLY_PAGE_POSITION: int = 1
 
-MIN_OCCURRENCES: int = 3
-SHORT_LINE_DENSITY_THRESHOLD: float = 0.60
+SELECTION_THRESHOLD: float = 3.0
+MIN_DOTTED_LEADERS: int = 1
+LINK_DENSITY_MIN_COUNT: int = 5
+EARLY_PAGE_MAX_NUMBER: int = 15
 
 
-def score_page(text: str) -> tuple[float, list[str]]:
-    """Compute a TOC-likelihood score for a single page's text."""
+def score_page(
+    text: str,
+    *,
+    page_number: int | None = None,
+    link_count: int = 0,
+) -> tuple[float, list[str]]:
+    """Compute TOC score for one page using weighted heuristics.
+
+    Args:
+        text: Page text.
+        page_number: One-based page number in the PDF.
+        link_count: Number of internal links (PyMuPDF ``kind == 1``) found on
+            this page.
+
+    Returns:
+        Tuple of ``(score, signals)`` where score is additive using the
+        configured weights.
+    """
     raw_score = 0.0
     signals: list[str] = []
 
@@ -24,23 +42,23 @@ def score_page(text: str) -> tuple[float, list[str]]:
         signals.append("TOC keyword detected")
 
     dotted = patterns.find_dotted_leader_lines(text)
-    if len(dotted) >= MIN_OCCURRENCES:
+    if len(dotted) >= MIN_DOTTED_LEADERS:
         raw_score += WEIGHT_DOTTED_LEADERS
         signals.append(f"Dotted leader patterns found ({len(dotted)} occurrences)")
 
-    numbered = patterns.find_lines_ending_with_number(text)
-    if len(numbered) >= MIN_OCCURRENCES:
-        raw_score += WEIGHT_LINES_WITH_NUMBER
-        signals.append(f"Multiple lines ending with page numbers ({len(numbered)} occurrences)")
+    numeric_ratio = patterns.calculate_numeric_line_end_ratio(text)
+    if numeric_ratio > patterns.NUMERIC_LINE_RATIO_THRESHOLD:
+        raw_score += WEIGHT_NUMERIC_LINE_RATIO
+        signals.append(
+            f"High numeric line-end ratio ({numeric_ratio:.0%} > {patterns.NUMERIC_LINE_RATIO_THRESHOLD:.0%})"
+        )
 
-    hierarchical = patterns.find_hierarchical_structure(text)
-    if len(hierarchical) >= MIN_OCCURRENCES:
-        raw_score += WEIGHT_HIERARCHICAL
-        signals.append(f"Hierarchical numbering structure detected ({len(hierarchical)} entries)")
+    if link_count > LINK_DENSITY_MIN_COUNT:
+        raw_score += WEIGHT_LINK_DENSITY
+        signals.append(f"High internal-link density ({link_count} links)")
 
-    density = patterns.calculate_short_line_density(text)
-    if density > SHORT_LINE_DENSITY_THRESHOLD:
-        raw_score += WEIGHT_SHORT_LINE_DENSITY
-        signals.append(f"High short-line density ({density:.0%})")
+    if page_number is not None and page_number < EARLY_PAGE_MAX_NUMBER:
+        raw_score += WEIGHT_EARLY_PAGE_POSITION
+        signals.append(f"Early page position bonus (page {page_number} < {EARLY_PAGE_MAX_NUMBER})")
 
-    return min(raw_score, 1.0), signals
+    return raw_score, signals

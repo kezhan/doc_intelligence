@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+import fitz
 import pdfplumber
 
 from .exceptions import EmptyPDFError, InvalidPDFError, PDFReadError
@@ -25,9 +26,21 @@ def extract_text_from_first_pages(
     pdf_path: str | Path,
     max_pages: int | None = None,
 ) -> list[dict[str, int | str]]:
-    """Extract text from the first ``max_pages`` pages of a PDF.
+    """Extract page text and link density signals from a PDF.
 
-    If ``max_pages`` is ``None``, the full document is inspected.
+    Args:
+        pdf_path: Path to the input PDF file.
+        max_pages: Maximum number of first pages to inspect. If ``None``,
+            inspect the full document.
+
+    Returns:
+        List of page dictionaries with one-based ``page_number``, extracted
+        ``text``, and internal ``link_count`` (PyMuPDF links with ``kind == 1``).
+
+    Raises:
+        PDFReadError: If path does not exist or is not a file.
+        InvalidPDFError: If the PDF cannot be opened.
+        EmptyPDFError: If the PDF has no pages.
     """
     path = Path(pdf_path)
 
@@ -41,6 +54,23 @@ def extract_text_from_first_pages(
     except Exception as exc:
         raise InvalidPDFError(f"Cannot open PDF '{path}': {exc}") from exc
 
+    link_count_by_page: dict[int, int] = {}
+    try:
+        with fitz.open(path) as doc:
+            for page_index, page in enumerate(doc, start=1):
+                try:
+                    links = page.get_links() or []
+                    link_count_by_page[page_index] = sum(
+                        1
+                        for link in links
+                        if int(link.get("kind", -1)) == 1
+                    )
+                except Exception:
+                    link_count_by_page[page_index] = 0
+    except Exception:
+        # Link signal is optional; keep text extraction resilient.
+        link_count_by_page = {}
+
     with pdf:
         if not pdf.pages:
             raise EmptyPDFError(f"PDF has no pages: {path}")
@@ -53,6 +83,12 @@ def extract_text_from_first_pages(
             except Exception:
                 raw_text = ""
 
-            result.append({"page_number": page.page_number, "text": raw_text})
+            result.append(
+                {
+                    "page_number": page.page_number,
+                    "text": raw_text,
+                    "link_count": link_count_by_page.get(page.page_number, 0),
+                }
+            )
 
     return result
