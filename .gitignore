@@ -48,7 +48,11 @@ _repo_src/
 notebooks/**/*.html
 notebooks/**/*_files/
 .quarto/
+_freeze/
 
 # Type checker
 .mypy_cache/
 .ruff_cache/
+
+/.quarto/
+**/*.quarto_ipynb

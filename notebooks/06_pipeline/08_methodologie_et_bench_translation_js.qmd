@@ -94,7 +94,7 @@ from docpipeline.rendering.pptx.build_document import build_pptx_document
 from docpipeline.translation.request_js import parse_translation_request
 from docpipeline.translation.scope_js import apply_translation_scope, TranslationScope
 
-ROOT = Path('../..').resolve()
+ROOT = Path('.').resolve()
 FIX  = ROOT / 'tests' / 'fixtures'
 OUT  = ROOT / 'notebooks' / '_outputs' / 'bench_translation_pipeline'
 OUT.mkdir(parents=True, exist_ok=True)

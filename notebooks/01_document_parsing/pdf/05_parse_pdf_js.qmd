@@ -1,0 +1,57 @@
+---
+title: '`parse_pdf` — extraction d''un PDF en DataFrames'
+jupyter: python3
+---
+
+
+Module testé : [`src/docpipeline/parsing/pdf/parse_pdf.py`](../src/docpipeline/parsing/pdf/parse_pdf.py).
+
+Ouvre fitz une seule fois et retourne 4 sorties prêtes à être consommées en aval :
+
+| Sortie | Schéma |
+|---|---|
+| `line_df`     | 1 ligne = 1 ligne de texte (`span_id`, `text`, bbox, font_name, font_size, bold, italic, color, is_invisible) |
+| `image_df`    | 1 ligne = 1 image (bbox, dimensions, ratio de couverture) |
+| `page_df`     | 1 ligne = 1 page (`page_type`, flags additifs, `extraction_strategy`, `tool`) |
+| `doc_summary` | JSON synthèse : `source_tool`, `content_type`, `recommended_strategy`, `pages_needing_ocr` |
+
+**page_type** (mutuellement exclusif) : `native`, `native_with_image`, `scanned`, `scanned_ocr_good`, `scanned_ocr_bad`, `mixed`, `empty`, `unknown`.
+**extraction_strategy** : `native` (fitz direct), `ocr` (OCR obligatoire), `hybrid` (texte natif + OCR sur images), `skip` (page vide).
+
+Démo ci-dessous : extraction sur un contrat MRH du corpus client (`data/CG contrats MRH/CG Assistance aux personnes AXA.pdf`). Pour le bench complet, voir [`05_bench_parse_pdf_js.ipynb`](05_bench_parse_pdf_js.ipynb).
+
+
+```{python}
+#| execution: {iopub.execute_input: '2026-05-09T07:48:55.079094Z', iopub.status.busy: '2026-05-09T07:48:55.078486Z', iopub.status.idle: '2026-05-09T07:49:14.744314Z', shell.execute_reply: '2026-05-09T07:49:14.742180Z'}
+# À exécuter une seule fois : installer le package en mode editable
+import sys
+!{sys.executable} -m pip install -q -e .
+```
+
+```{python}
+#| execution: {iopub.execute_input: '2026-05-09T07:49:14.828895Z', iopub.status.busy: '2026-05-09T07:49:14.827970Z', iopub.status.idle: '2026-05-09T07:49:19.941710Z', shell.execute_reply: '2026-05-09T07:49:19.935480Z'}
+import pandas as pd
+from pathlib import Path
+from IPython.display import display, Markdown
+from docpipeline.parsing.pdf.parse_pdf import parse_pdf
+
+PDF = Path('data/CG contrats MRH/CG Assistance aux personnes AXA.pdf')
+
+pd.set_option('display.max_colwidth', 120)
+
+result = parse_pdf(PDF)
+
+display(Markdown('### 1. `doc_summary` — synthèse au niveau document'))
+summary_df = pd.DataFrame([{'key': k, 'value': str(v)} for k, v in result['doc_summary'].items()])
+display(summary_df)
+
+display(Markdown(f"### 2. `page_df` — {len(result['page_df'])} pages classifiées"))
+display(result['page_df'][['page_num', 'page_type', 'tool', 'extraction_strategy', 'char_count', 'n_images', 'image_coverage_ratio']])
+
+display(Markdown(f"### 3. `line_df` — {len(result['line_df'])} lignes (10 premières)"))
+display(result['line_df'].head(10)[['span_id', 'page_num', 'text', 'font_name', 'font_size', 'bold', 'italic', 'color']])
+
+display(Markdown(f"### 4. `image_df` — {len(result['image_df'])} image(s) embarquée(s)"))
+display(result['image_df'])
+```
+
