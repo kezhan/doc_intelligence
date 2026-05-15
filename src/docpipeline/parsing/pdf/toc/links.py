@@ -14,7 +14,7 @@ from pathlib import Path
 import fitz  # PyMuPDF
 import pandas as pd
 
-from ._utils import add_toc_metadata
+from ._utils import add_toc_metadata, normalize_toc_schema
 
 
 _CLEAN_LEADING_NUMBERS_RE = re.compile(r"^\s*\d+[.\)]*\s*")
@@ -44,7 +44,7 @@ def extract_toc_from_links(
     TOC cliquable (Word vers PDF, Adobe Acrobat, etc.).
 
     Input  : chemin PDF, nombre de pages à scanner
-    Output : DataFrame colonnes [text, page_num_real, page_num, level, indicator]
+    Output : DataFrame normalisé (source='links', validated=True)
              — vide si aucun hyperlien interne n'est trouvé
     """
     toc_entries: list[dict] = []
@@ -62,11 +62,12 @@ def extract_toc_from_links(
                             toc_entries.append({
                                 "text": cleaned_text,
                                 "page_num_real": link["page"] + 1,
+                                "source_page": i + 1,
+                                "validated": True,
                             })
-    toc_df = pd.DataFrame(toc_entries, columns=["text", "page_num_real"])
-    if not toc_df.empty:
-        toc_df["page_num"] = toc_df["page_num_real"]
-    return add_toc_metadata(toc_df)
+    toc_df = pd.DataFrame(toc_entries, columns=["text", "page_num_real", "source_page", "validated"])
+    toc_df = add_toc_metadata(toc_df)
+    return normalize_toc_schema(toc_df, source="links", validated_default=True)
 
 
 def extract_toc_by_numbering(
@@ -81,7 +82,7 @@ def extract_toc_by_numbering(
     footer (footer_ratio × hauteur de page) pour ne pas capturer la pagination.
 
     Input  : chemin PDF, nombre de pages à scanner, ratio footer à ignorer
-    Output : DataFrame colonnes [text, page_num_displayed, page_num_real, page_num, level, indicator]
+    Output : DataFrame normalisé (source='numbering', validated=False par défaut)
     """
     toc_entries: list[dict] = []
 
@@ -105,10 +106,11 @@ def extract_toc_by_numbering(
                             toc_entries.append({
                                 "text": title,
                                 "page_num_displayed": int(match.group(2)),
+                                "source_page": i + 1,
                             })
-    toc_df = pd.DataFrame(toc_entries, columns=["text", "page_num_displayed"])
+    toc_df = pd.DataFrame(toc_entries, columns=["text", "page_num_displayed", "source_page"])
     if not toc_df.empty:
         # Sans ancrage de lien interne, on suppose l'égalité affichée/réelle.
         toc_df["page_num_real"] = toc_df["page_num_displayed"]
-        toc_df["page_num"] = toc_df["page_num_real"]
-    return add_toc_metadata(toc_df)
+    toc_df = add_toc_metadata(toc_df)
+    return normalize_toc_schema(toc_df, source="numbering", validated_default=False)

@@ -9,7 +9,7 @@ from pathlib import Path
 import fitz  # PyMuPDF
 import pandas as pd
 
-from ._utils import add_page_end_column, add_toc_metadata
+from ._utils import add_page_end_column, add_toc_metadata, normalize_toc_schema
 
 
 # ── Détection ─────────────────────────────────────────────────────────────────
@@ -62,20 +62,25 @@ def extract_native_toc(pdf_path: str | Path) -> pd.DataFrame:
     Extraire le TOC natif d'un PDF sous forme de DataFrame.
 
     Input  : chemin PDF
-    Output : DataFrame colonnes [level, title, page, page_num_real, page_num, page_end, indicator]
+    Output : DataFrame normalisé avec les colonnes cibles du package TOC.
+             `fitz.Document.get_toc()` renvoie des pages affichées 1-base,
+             utilisées ici directement comme ``page_num_real``.
              — vide (0 lignes) si aucun signet n'est présent
     """
     with fitz.open(str(pdf_path)) as doc:
         toc_raw = doc.get_toc()
 
     if not toc_raw:
-        return pd.DataFrame(columns=["level", "title", "page", "page_end", "indicator"])
+        return normalize_toc_schema(
+            pd.DataFrame(columns=["text", "page_num_real"]),
+            source="native",
+            validated_default=True,
+        )
 
     toc_df = pd.DataFrame(toc_raw, columns=["level", "title", "page"])
     cleaned_df = clean_toc_df(toc_df)
     cleaned_df["page_num_real"] = cleaned_df["page"].astype("Int64")
-    cleaned_df["page_num"] = cleaned_df["page_num_real"]
-    return cleaned_df
+    return normalize_toc_schema(cleaned_df, source="native", validated_default=True)
 
 
 def extract_native_toc_detailed(pdf_path: str | Path) -> pd.DataFrame:

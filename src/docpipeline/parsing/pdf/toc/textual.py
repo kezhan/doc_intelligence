@@ -15,7 +15,7 @@ from pathlib import Path
 import fitz  # PyMuPDF
 import pandas as pd
 
-from ._utils import add_toc_metadata, compute_page_offset
+from ._utils import add_toc_metadata, compute_page_offset, normalize_toc_schema
 
 
 # ── 1. Lignes pointillées ─────────────────────────────────────────────────────
@@ -30,7 +30,7 @@ def extract_toc_dotted(pdf_path: str | Path) -> pd.DataFrame:
     Typique : "Introduction ............. 3"
 
     Input  : chemin PDF
-    Output : DataFrame colonnes [text, page_num_displayed, page_num_real, source_page]
+    Output : DataFrame normalisé (source='dotted')
              — vide si aucune ligne à points leaders n'est trouvée
     """
     toc_entries: list[dict] = []
@@ -57,9 +57,8 @@ def extract_toc_dotted(pdf_path: str | Path) -> pd.DataFrame:
         columns=["text", "page_num_displayed", "source_page"],
     )
     toc_df = compute_page_offset(toc_df, page_texts)
-    if "page_num_real" in toc_df.columns:
-        toc_df["page_num"] = toc_df["page_num_real"]
-    return add_toc_metadata(toc_df)
+    toc_df = add_toc_metadata(toc_df)
+    return normalize_toc_schema(toc_df, source="dotted", validated_default=False)
 
 
 # ── 2. Extraction multiline ───────────────────────────────────────────────────
@@ -75,7 +74,7 @@ def extract_toc_multiline(pdf_path: str | Path) -> pd.DataFrame:
     variantes tirets, underline, espaces répétés.
 
     Input  : chemin PDF
-    Output : DataFrame colonnes [text, page_num_displayed, page_num_real, source_page]
+    Output : DataFrame normalisé (source='multiline')
     """
     toc_entries: list[dict] = []
     page_texts: list[str] = []
@@ -129,9 +128,8 @@ def extract_toc_multiline(pdf_path: str | Path) -> pd.DataFrame:
         columns=["text", "page_num_displayed", "source_page"],
     )
     toc_df = compute_page_offset(toc_df, page_texts)
-    if "page_num_real" in toc_df.columns:
-        toc_df["page_num"] = toc_df["page_num_real"]
-    return add_toc_metadata(toc_df)
+    toc_df = add_toc_metadata(toc_df)
+    return normalize_toc_schema(toc_df, source="multiline", validated_default=False)
 
 
 # ── 3. Titraille par style ────────────────────────────────────────────────────

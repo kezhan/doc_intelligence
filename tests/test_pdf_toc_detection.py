@@ -19,9 +19,11 @@ from docpipeline.parsing.pdf.toc import (
     score_page,
 )
 from docpipeline.parsing.pdf.toc._utils import (
+    TARGET_TOC_COLUMNS,
     add_toc_metadata,
     apply_consensus_page_offset,
     compute_page_offset,
+    normalize_toc_schema,
 )
 from docpipeline.parsing.pdf.toc.bookmarks import _normalise_bookmark_dataframe
 
@@ -192,6 +194,26 @@ def test_compute_page_offset_uses_explicit_displayed_column() -> None:
     assert resolved[["page_num_displayed", "page_num_real", "page_offset"]].to_dict("records") == [
         {"page_num_displayed": 1, "page_num_real": 3, "page_offset": 2},
         {"page_num_displayed": 5, "page_num_real": 6, "page_offset": 2},
+    ]
+    assert resolved["validated"].tolist() == [True, True]
+
+
+def test_normalize_toc_schema_outputs_target_columns_and_types() -> None:
+    raw = pd.DataFrame(
+        [
+            {"text": "1. Intro", "page_num_displayed": 1, "page_num_real": 3, "source_page": 2},
+            {"text": "1.1 Scope", "page_num_displayed": 2, "page_num_real": 4, "source_page": 2},
+        ]
+    )
+
+    normalized = normalize_toc_schema(raw, source="dotted", validated_default=False)
+
+    assert all(column in normalized.columns for column in TARGET_TOC_COLUMNS)
+    assert normalized["source"].unique().tolist() == ["dotted"]
+    assert normalized["validated"].tolist() == [False, False]
+    assert normalized[["text", "level", "indicator", "page_num_real", "page_end"]].to_dict("records") == [
+        {"text": "1. Intro", "level": 1, "indicator": "L1", "page_num_real": 3, "page_end": 3},
+        {"text": "1.1 Scope", "level": 2, "indicator": "L1.1", "page_num_real": 4, "page_end": None},
     ]
 
 
