@@ -29,14 +29,17 @@ Usage :
     from docpipeline.parsing.pdf.toc.gpt import extract_toc_with_gpt
 
     df = extract_toc_with_gpt("rapport_annuel.pdf", api_key="sk-...")
-    # → DataFrame colonnes [level, title, page_num]
+    # → DataFrame colonnes [level, title, page_num_displayed, page_num_real, page_num]
 """
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import fitz  # PyMuPDF — conservé pour find_toc_pages / extract_raw_toc_text
 import pandas as pd
 
+from ._utils import compute_page_offset
 from .patterns import TOC_KEYWORDS
 from .reader import DEFAULT_MAX_PAGES, extract_text_from_first_pages
 
@@ -200,16 +203,20 @@ def extract_toc_with_gpt(
              max_pages     : nombre de premières pages à envoyer (défaut: 5)
              model         : modèle OpenAI à utiliser (défaut: gpt-4o-mini)
              custom_prompt : instructions personnalisées remplaçant le prompt par défaut
-    Output : DataFrame colonnes [level, title, page_num]
+    Output : DataFrame colonnes [level, title, page_num_displayed, page_num_real, page_num]
              — vide (0 lignes) si le LLM ne trouve pas de TOC ou en cas d'échec
     """
+    empty_df = pd.DataFrame(
+        columns=["level", "title", "page_num_displayed", "page_num_real", "page_num"]
+    )
+
     pages = extract_text_from_first_pages(pdf_path, max_pages=max_pages)
     raw_text = "\n\n--- page break ---\n\n".join(
         p["text"] for p in pages if p["text"].strip()
     )
 
     if not raw_text.strip():
-        return pd.DataFrame(columns=["level", "title", "page_num"])
+        return empty_df
 
     try:
         entries = _extract_structured_with_openai(
@@ -219,13 +226,31 @@ def extract_toc_with_gpt(
             custom_prompt=custom_prompt,
         )
     except Exception:
-        return pd.DataFrame(columns=["level", "title", "page_num"])
+        return empty_df
 
     if not entries:
-        return pd.DataFrame(columns=["level", "title", "page_num"])
+        return empty_df
 
-    return (
-        pd.DataFrame(entries)
-        .sort_values("page_num")
-        .reset_index(drop=True)
-    )
+    toc_df = pd.DataFrame(entries).rename(columns={"page_num": "page_num_displayed"})
+
+    try:
+        with fitz.open(str(pdf_path)) as doc:
+            page_texts = [doc[index].get_text("text") for index in range(len(doc))]
+        toc_df = compute_page_offset(toc_df, page_texts)
+    except Exception:
+        # Fallback robuste : si le calcul d'offset échoue, on conserve
+        # la pagination affichée comme approximation physique.
+        toc_df["page_num_real"] = pd.to_numeric(
+            toc_df.get("page_num_displayed"),
+            errors="coerce",
+        ).astype("Int64")
+        toc_df["page_offset"] = 0
+
+    if "page_num_real" not in toc_df.columns:
+        toc_df["page_num_real"] = pd.to_numeric(
+            toc_df.get("page_num_displayed"),
+            errors="coerce",
+        ).astype("Int64")
+
+    toc_df["page_num"] = toc_df["page_num_real"]
+    return toc_df.sort_values("page_num_real").reset_index(drop=True)

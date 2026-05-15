@@ -44,7 +44,7 @@ def extract_toc_from_links(
     TOC cliquable (Word vers PDF, Adobe Acrobat, etc.).
 
     Input  : chemin PDF, nombre de pages à scanner
-    Output : DataFrame colonnes [text, page_num, level, indicator]
+    Output : DataFrame colonnes [text, page_num_real, page_num, level, indicator]
              — vide si aucun hyperlien interne n'est trouvé
     """
     toc_entries: list[dict] = []
@@ -61,10 +61,12 @@ def extract_toc_from_links(
                         if cleaned_text:
                             toc_entries.append({
                                 "text": cleaned_text,
-                                "page_num": link["page"] + 1,
+                                "page_num_real": link["page"] + 1,
                             })
-
-    return add_toc_metadata(pd.DataFrame(toc_entries, columns=["text", "page_num"]))
+    toc_df = pd.DataFrame(toc_entries, columns=["text", "page_num_real"])
+    if not toc_df.empty:
+        toc_df["page_num"] = toc_df["page_num_real"]
+    return add_toc_metadata(toc_df)
 
 
 def extract_toc_by_numbering(
@@ -79,7 +81,7 @@ def extract_toc_by_numbering(
     footer (footer_ratio × hauteur de page) pour ne pas capturer la pagination.
 
     Input  : chemin PDF, nombre de pages à scanner, ratio footer à ignorer
-    Output : DataFrame colonnes [text, page_num, level, indicator]
+    Output : DataFrame colonnes [text, page_num_displayed, page_num_real, page_num, level, indicator]
     """
     toc_entries: list[dict] = []
 
@@ -102,7 +104,11 @@ def extract_toc_by_numbering(
                         if title:
                             toc_entries.append({
                                 "text": title,
-                                "page_num": int(match.group(2)),
+                                "page_num_displayed": int(match.group(2)),
                             })
-
-    return add_toc_metadata(pd.DataFrame(toc_entries, columns=["text", "page_num"]))
+    toc_df = pd.DataFrame(toc_entries, columns=["text", "page_num_displayed"])
+    if not toc_df.empty:
+        # Sans ancrage de lien interne, on suppose l'égalité affichée/réelle.
+        toc_df["page_num_real"] = toc_df["page_num_displayed"]
+        toc_df["page_num"] = toc_df["page_num_real"]
+    return add_toc_metadata(toc_df)

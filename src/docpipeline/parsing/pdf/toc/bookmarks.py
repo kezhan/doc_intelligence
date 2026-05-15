@@ -62,14 +62,28 @@ def add_dataframe_toc_to_pdf(
 
 
 def _normalise_bookmark_dataframe(toc_df: pd.DataFrame) -> pd.DataFrame:
-    """Accept both extraction schemas: ``text/page_num`` and ``title/page``."""
+    """Accept extraction schemas and normalize to ``text``/``page_num``.
+
+    Supported page columns (priority order):
+      - ``page_num_real`` (preferred, physical page 1-base)
+      - ``page_num`` (legacy)
+      - ``page`` (native schema)
+      - ``page_num_displayed`` (fallback)
+    """
     columns = set(toc_df.columns)
+    if {"text", "page_num_real"}.issubset(columns):
+        normalized = toc_df.rename(columns={"page_num_real": "page_num"}).copy()
+        if "page_num" in toc_df.columns:
+            normalized["page_num_legacy"] = toc_df["page_num"]
+        return normalized
     if {"text", "page_num"}.issubset(columns):
         return toc_df.copy()
     if {"title", "page"}.issubset(columns):
         renamed = toc_df.rename(columns={"title": "text", "page": "page_num"}).copy()
         return renamed
+    if {"text", "page_num_displayed"}.issubset(columns):
+        return toc_df.rename(columns={"page_num_displayed": "page_num"}).copy()
 
     raise ValueError(
-        "TOC DataFrame must contain either columns text/page_num or title/page"
+        "TOC DataFrame must contain one of: text/page_num_real, text/page_num, text/page_num_displayed, or title/page"
     )

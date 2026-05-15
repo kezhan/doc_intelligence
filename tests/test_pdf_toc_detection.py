@@ -18,7 +18,11 @@ from docpipeline.parsing.pdf.toc import (
     normalize_text,
     score_page,
 )
-from docpipeline.parsing.pdf.toc._utils import add_toc_metadata, apply_consensus_page_offset
+from docpipeline.parsing.pdf.toc._utils import (
+    add_toc_metadata,
+    apply_consensus_page_offset,
+    compute_page_offset,
+)
 from docpipeline.parsing.pdf.toc.bookmarks import _normalise_bookmark_dataframe
 
 
@@ -167,10 +171,44 @@ def test_apply_consensus_page_offset_maps_printed_to_physical_pages() -> None:
     ]
 
 
+def test_compute_page_offset_uses_explicit_displayed_column() -> None:
+    toc_df = pd.DataFrame(
+        [
+            {"text": "Introduction", "page_num_displayed": 1},
+            {"text": "Architecture", "page_num_displayed": 5},
+        ]
+    )
+    page_texts = [
+        "Cover",
+        "Table des matieres",
+        "Introduction\nOverview",
+        "Body",
+        "Body",
+        "Architecture\nDeep dive",
+    ]
+
+    resolved = compute_page_offset(toc_df, page_texts)
+
+    assert resolved[["page_num_displayed", "page_num_real", "page_offset"]].to_dict("records") == [
+        {"page_num_displayed": 1, "page_num_real": 3, "page_offset": 2},
+        {"page_num_displayed": 5, "page_num_real": 6, "page_offset": 2},
+    ]
+
+
 def test_normalise_bookmark_dataframe_accepts_native_schema() -> None:
     native_df = pd.DataFrame([{"title": "Intro", "page": 3, "level": 1}])
 
     normalised = _normalise_bookmark_dataframe(native_df)
+
+    assert normalised[["text", "page_num", "level"]].to_dict("records") == [
+        {"text": "Intro", "page_num": 3, "level": 1}
+    ]
+
+
+def test_normalise_bookmark_dataframe_accepts_page_num_real_schema() -> None:
+    real_df = pd.DataFrame([{"text": "Intro", "page_num_real": 3, "level": 1}])
+
+    normalised = _normalise_bookmark_dataframe(real_df)
 
     assert normalised[["text", "page_num", "level"]].to_dict("records") == [
         {"text": "Intro", "page_num": 3, "level": 1}

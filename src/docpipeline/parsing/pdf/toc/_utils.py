@@ -88,21 +88,55 @@ def apply_consensus_page_offset(
     *,
     min_similarity: float = 0.72,
 ) -> pd.DataFrame:
-    """Shift printed TOC page numbers to physical PDF pages using title matches."""
-    if toc_df.empty or not page_texts or "text" not in toc_df.columns or "page_num" not in toc_df.columns:
+    """Compat: convert legacy ``page_num`` (displayed) into physical pages.
+
+    Cette fonction conserve le contrat historique en gardant ``page_num`` comme
+    numéro physique 1-base en sortie, et expose aussi ``displayed_page``.
+    """
+    if toc_df.empty or "page_num" not in toc_df.columns:
+        return toc_df.copy()
+
+    df = toc_df.rename(columns={"page_num": "page_num_displayed"}).copy()
+    df = compute_page_offset(df, page_texts, min_similarity=min_similarity)
+    df["page_num"] = df["page_num_real"]
+    df["displayed_page"] = df["page_num_displayed"]
+    return df
+
+
+def compute_page_offset(
+    toc_df: pd.DataFrame,
+    page_texts: list[str],
+    *,
+    min_similarity: float = 0.72,
+) -> pd.DataFrame:
+    """Calculer ``page_num_real`` (1-base) depuis ``page_num_displayed``.
+
+    Args:
+        toc_df: DataFrame contenant au minimum ``text`` et
+            ``page_num_displayed``.
+        page_texts: Texte de chaque page physique du PDF (index 1-base logique).
+        min_similarity: Seuil de similarité pour considérer un appariement
+            titre/page comme valide.
+
+    Returns:
+        DataFrame enrichi avec ``page_num_real`` et ``page_offset``.
+    """
+    required_columns = {"text", "page_num_displayed"}
+    if toc_df.empty or not page_texts or not required_columns.issubset(toc_df.columns):
         return toc_df.copy()
 
     df = toc_df.copy()
-    df["displayed_page"] = pd.to_numeric(df["page_num"], errors="coerce").astype("Int64")
+    df["page_num_displayed"] = pd.to_numeric(df["page_num_displayed"], errors="coerce").astype("Int64")
 
     offsets: list[int] = []
     for row in df.itertuples(index=False):
-        if pd.isna(row.displayed_page):
+        displayed_page = getattr(row, "page_num_displayed", pd.NA)
+        if pd.isna(displayed_page):
             continue
         actual_page, similarity = _find_best_matching_page(str(row.text), page_texts)
         if actual_page is None or similarity < min_similarity:
             continue
-        offsets.append(int(actual_page) - int(row.displayed_page))
+        offsets.append(int(actual_page) - int(displayed_page))
 
     offset = Counter(offsets).most_common(1)[0][0] if offsets else 0
     max_page = len(page_texts)
@@ -113,7 +147,7 @@ def apply_consensus_page_offset(
         shifted = int(page_value) + offset
         return min(max(shifted, 1), max_page)
 
-    df["page_num"] = df["displayed_page"].map(_shift_page).astype("Int64")
+    df["page_num_real"] = df["page_num_displayed"].map(_shift_page).astype("Int64")
     df["page_offset"] = offset
     return df
 

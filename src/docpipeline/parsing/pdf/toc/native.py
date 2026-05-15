@@ -62,7 +62,7 @@ def extract_native_toc(pdf_path: str | Path) -> pd.DataFrame:
     Extraire le TOC natif d'un PDF sous forme de DataFrame.
 
     Input  : chemin PDF
-    Output : DataFrame colonnes [level, title, page, page_end, indicator]
+    Output : DataFrame colonnes [level, title, page, page_num_real, page_num, page_end, indicator]
              — vide (0 lignes) si aucun signet n'est présent
     """
     with fitz.open(str(pdf_path)) as doc:
@@ -72,7 +72,10 @@ def extract_native_toc(pdf_path: str | Path) -> pd.DataFrame:
         return pd.DataFrame(columns=["level", "title", "page", "page_end", "indicator"])
 
     toc_df = pd.DataFrame(toc_raw, columns=["level", "title", "page"])
-    return clean_toc_df(toc_df)
+    cleaned_df = clean_toc_df(toc_df)
+    cleaned_df["page_num_real"] = cleaned_df["page"].astype("Int64")
+    cleaned_df["page_num"] = cleaned_df["page_num_real"]
+    return cleaned_df
 
 
 def extract_native_toc_detailed(pdf_path: str | Path) -> pd.DataFrame:

@@ -15,7 +15,7 @@ from pathlib import Path
 import fitz  # PyMuPDF
 import pandas as pd
 
-from ._utils import add_toc_metadata, apply_consensus_page_offset
+from ._utils import add_toc_metadata, compute_page_offset
 
 
 # ── 1. Lignes pointillées ─────────────────────────────────────────────────────
@@ -30,7 +30,7 @@ def extract_toc_dotted(pdf_path: str | Path) -> pd.DataFrame:
     Typique : "Introduction ............. 3"
 
     Input  : chemin PDF
-    Output : DataFrame colonnes [text, page_num, source_page]
+    Output : DataFrame colonnes [text, page_num_displayed, page_num_real, source_page]
              — vide si aucune ligne à points leaders n'est trouvée
     """
     toc_entries: list[dict] = []
@@ -44,19 +44,21 @@ def extract_toc_dotted(pdf_path: str | Path) -> pd.DataFrame:
                 match = _DOTTED_PATTERN.match(line.strip())
                 if match:
                     title = match.group(1).strip()
-                    page_num = int(match.group(2))
+                    page_num_displayed = int(match.group(2))
                     if title:
                         toc_entries.append({
                             "text": title,
-                            "page_num": page_num,
+                            "page_num_displayed": page_num_displayed,
                             "source_page": page_index,
                         })
 
     toc_df = pd.DataFrame(
         toc_entries,
-        columns=["text", "page_num", "source_page"],
+        columns=["text", "page_num_displayed", "source_page"],
     )
-    toc_df = apply_consensus_page_offset(toc_df, page_texts)
+    toc_df = compute_page_offset(toc_df, page_texts)
+    if "page_num_real" in toc_df.columns:
+        toc_df["page_num"] = toc_df["page_num_real"]
     return add_toc_metadata(toc_df)
 
 
@@ -73,7 +75,7 @@ def extract_toc_multiline(pdf_path: str | Path) -> pd.DataFrame:
     variantes tirets, underline, espaces répétés.
 
     Input  : chemin PDF
-    Output : DataFrame colonnes [text, page_num, source_page]
+    Output : DataFrame colonnes [text, page_num_displayed, page_num_real, source_page]
     """
     toc_entries: list[dict] = []
     page_texts: list[str] = []
@@ -93,7 +95,7 @@ def extract_toc_multiline(pdf_path: str | Path) -> pd.DataFrame:
                     if match and match.group(2):
                         toc_entries.append({
                             "text": match.group(1).strip(),
-                            "page_num": int(match.group(2)),
+                            "page_num_displayed": int(match.group(2)),
                             "source_page": page_index,
                         })
                         buffer_line = None
@@ -109,7 +111,7 @@ def extract_toc_multiline(pdf_path: str | Path) -> pd.DataFrame:
                         if title:
                             toc_entries.append({
                                 "text": title,
-                                "page_num": int(page_num_str),
+                                "page_num_displayed": int(page_num_str),
                                 "source_page": page_index,
                             })
                     else:
@@ -117,16 +119,18 @@ def extract_toc_multiline(pdf_path: str | Path) -> pd.DataFrame:
                 elif buffer_line is not None and line.isdigit():
                     toc_entries.append({
                         "text": buffer_line.rsplit(maxsplit=1)[0],
-                        "page_num": int(line),
+                        "page_num_displayed": int(line),
                         "source_page": page_index,
                     })
                     buffer_line = None
 
     toc_df = pd.DataFrame(
         toc_entries,
-        columns=["text", "page_num", "source_page"],
+        columns=["text", "page_num_displayed", "source_page"],
     )
-    toc_df = apply_consensus_page_offset(toc_df, page_texts)
+    toc_df = compute_page_offset(toc_df, page_texts)
+    if "page_num_real" in toc_df.columns:
+        toc_df["page_num"] = toc_df["page_num_real"]
     return add_toc_metadata(toc_df)
 
 
