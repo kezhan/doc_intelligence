@@ -1,0 +1,440 @@
+---
+title: "Question en langage naturel -> reponse sur fichier Excel"
+format: html
+jupyter: python3
+---
+
+# Question en langage naturel → réponse sur fichier Excel
+
+**Input** : une question utilisateur en langage naturel + un fichier Excel.  
+**Output** : une réponse en langage naturel basée sur les données du fichier.
+
+Exemples de questions visées :
+- *« Quels sont les 5 sites avec les plus gros capitaux DDPE ? »*
+- *« Filtre sur country = FR et trie par DD seul. »*
+- *« Combien de sites par pays ? »*
+- *« Quels sites sont à La Réunion ? »*
+
+Le notebook détaille chaque étape de la démarche pour qu'on comprenne où la complexité vit
+(et où on choisit de la déléguer au LLM).
+
+## 0. Setup
+
+```{python}
+from __future__ import annotations
+
+import os, sys, sqlite3, re
+from pathlib import Path
+import pandas as pd
+
+if sys.platform == "win32":
+    os.environ.setdefault("PYTHONUTF8", "1")
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    except AttributeError:
+        pass
+
+# Racine du repo (le notebook est dans notebooks/06_pipeline/excel/, donc 3 niveaux au-dessus)
+REPO = Path.cwd()
+for _ in range(4):
+    if (REPO / "pyproject.toml").exists():
+        break
+    REPO = REPO.parent
+
+XLSX_PATH = REPO / "notebooks" / "06_pipeline" / "excel" / "capitaux_anonymise.xlsx"
+DB_PATH   = REPO / "notebooks" / "_outputs" / "capitaux_anonymise.sqlite"
+DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+
+assert XLSX_PATH.exists(), f"Fixture manquante : {XLSX_PATH}"
+print(f"Excel : {XLSX_PATH.relative_to(REPO)}")
+print(f"DB    : {DB_PATH.relative_to(REPO)}")
+
+# LLM : OPENAI_API_KEY suffit. Sans clé, les cellules LLM affichent un placeholder.
+LLM_AVAILABLE = bool(os.environ.get("OPENAI_API_KEY"))
+print(f"LLM   : {'OK (OpenAI)' if LLM_AVAILABLE else 'no API key — fallback display'}")
+```
+
+## 1. Le problème
+
+Le fichier `capitaux_anonymise.xlsx` contient un portefeuille d'assurance dommages anonymisé (Faker fr_FR) : ~850 sites, 31 colonnes.
+On veut répondre à n'importe quelle question raisonnable de l'utilisateur, sans coder une
+fonction par type de question.
+
+Le défi : la diversité des questions :
+
+| Type | Exemple | Opération sous-jacente |
+|---|---|---|
+| Comptage | « Combien de sites ? » | `COUNT(*)` |
+| Filtre + tri | « Plus gros DD seul en France » | `WHERE Pays='FRANCE' ORDER BY ... DESC` |
+| Top-N | « Top 5 DDPE » | `ORDER BY ... DESC LIMIT 5` |
+| Agrégation | « Capitaux par pays » | `GROUP BY Pays SUM(...)` |
+| Recherche | « Sites à La Réunion » | `WHERE "Code Postal" LIKE '974%'` |
+
+Coder un branchement Python par cas = sans fin. On a besoin d'un pivot générique.
+
+## 2. Stratégie : Excel → SQLite → SQL généré par LLM → résultat
+
+```
+                          ┌────────────────┐
+                          │ Fichier Excel  │
+                          └───────┬────────┘
+                                  │ ingest (1 fois)
+                                  ▼
+                          ┌────────────────┐
+                          │ SQLite (table) │ ◄──── source de vérité, requêtable
+                          └───────┬────────┘
+                                  │
+                                  │ schema describe
+                                  ▼
+ Question NL ───┐         ┌────────────────┐         ┌─────────────────┐
+ (« top 5 DDPE »)├────────►│   LLM (NL→SQL) │────────►│ SQL généré      │
+                 │         └────────────────┘         └────────┬────────┘
+                 │                  ▲                          │
+                 │       sample rows│                          │ execute (read-only)
+                 │                  │                          ▼
+                 │         ┌────────┴───────┐         ┌─────────────────┐
+                 │         │  Schema + 3    │         │ DataFrame résultat│
+                 │         │  sample rows   │         └────────┬────────┘
+                 │         └────────────────┘                  │
+                 │                                             │ LLM résume
+                 └─────────────────────────────────────────────┤
+                                                               ▼
+                                                      ┌─────────────────┐
+                                                      │ Réponse NL      │
+                                                      └─────────────────┘
+```
+
+Pourquoi SQL comme pivot intermédiaire ?
+
+- **Le LLM connaît SQL très bien** (entraîné sur des téraoctets de SQL public). Mieux que sur
+  pandas — la syntaxe pandas a 5 façons de faire la même chose, SQL est plus standardisé.
+- **Exécution sandboxée triviale** : SQLite en mode `query_only` interdit les writes par
+  défaut. Pas de risque d'`exec()` arbitraire.
+- **Déterministe** : le même SQL sur les mêmes données → même résultat.
+- **Auditable** : on peut afficher la requête générée à l'utilisateur (transparence).
+
+L'alternative *« LLM génère du pandas qu'on exécute »* marche aussi mais expose à des
+vulnérabilités d'injection et c'est plus dur à valider statiquement.
+
+## 3. Préparation du fichier Excel
+
+Deux pièges classiques :
+
+1. **La ligne d'en-tête n'est pas toujours en ligne 1.** Souvent il y a une ligne vide
+   ou un titre fusionné au-dessus. Il faut la **détecter automatiquement**.
+2. **Les noms de colonnes contiennent des `\n` et des espaces** (`"Total\nDD/PE\n2025"`).
+   On les nettoie pour qu'ils soient utilisables en SQL avec des `"double quotes"`.
+
+```{python}
+def detect_header_row(xlsx_path: Path, max_check: int = 5) -> int:
+    """Renvoie l'index de la ligne où sont les en-têtes réels.
+
+    Heuristique : c'est la première ligne où ≥ 50 % des cellules sont non-nulles
+    ET où le contenu ressemble à des en-têtes (strings, pas des nombres).
+    """
+    raw = pd.read_excel(xlsx_path, header=None, nrows=max_check)
+    n_cols = raw.shape[1]
+    for i in range(len(raw)):
+        non_null = raw.iloc[i].notna().sum()
+        if non_null < n_cols * 0.5:
+            continue
+        # Les en-têtes sont des chaînes en majorité
+        str_ratio = sum(isinstance(v, str) for v in raw.iloc[i] if pd.notna(v)) / max(non_null, 1)
+        if str_ratio >= 0.5:
+            return i
+    return 0
+
+
+def clean_col(name: str) -> str:
+    s = str(name).replace("\n", " ").strip()
+    return re.sub(r"\s+", " ", s)
+
+
+def load_excel_to_sqlite(xlsx_path: Path, db_path: Path, table: str = "data") -> dict:
+    header_row = detect_header_row(xlsx_path)
+    df = pd.read_excel(xlsx_path, skiprows=header_row, header=0)
+    df.columns = [clean_col(c) for c in df.columns]
+    df = df.dropna(how="all")                # lignes complètement vides
+    df = df[df.notna().sum(axis=1) >= 2]      # lignes avec au moins 2 cellules
+
+    if db_path.exists():
+        db_path.unlink()
+    with sqlite3.connect(db_path) as conn:
+        df.to_sql(table, conn, if_exists="replace", index=False)
+
+    return {"header_row": header_row, "n_rows": len(df), "n_cols": df.shape[1],
+            "columns": list(df.columns)}
+
+
+info = load_excel_to_sqlite(XLSX_PATH, DB_PATH)
+print(f"Ligne d'entête détectée    : row {info['header_row']}")
+print(f"Lignes ingérées            : {info['n_rows']}")
+print(f"Colonnes                   : {info['n_cols']}")
+print(f"\nColonnes (nettoyées) :")
+for c in info["columns"]:
+    print(f"  · {c}")
+```
+
+## 4. Exposer le schéma au LLM
+
+Le LLM ne voit pas les données — il voit un **descriptif** qu'on lui donne en prompt. Ce
+descriptif doit être :
+
+- **complet** : nom de la table, nom et type de chaque colonne
+- **concret** : 3 lignes d'exemple pour qu'il comprenne le contenu réel (les noms
+  `"Total DD/PE 2025"` sans valeurs, c'est ambigu — avec un sample il comprend)
+- **borné** : pas plus de quelques lignes (la facture LLM dépend du nombre de tokens)
+
+```{python}
+def describe_schema(db_path: Path, table: str = "data", n_samples: int = 3) -> str:
+    with sqlite3.connect(db_path) as conn:
+        cols_info = conn.execute(f'PRAGMA table_info("{table}")').fetchall()
+        sample = pd.read_sql_query(f'SELECT * FROM "{table}" LIMIT {n_samples}', conn)
+
+    parts = [f"Table: {table}", "", "Colonnes (nom, type SQLite) :"]
+    for _, name, dtype, *_ in cols_info:
+        parts.append(f'  - "{name}"  ({dtype})')
+    parts.append("")
+    parts.append(f"Échantillon ({n_samples} lignes) :")
+    parts.append(sample.to_string(max_colwidth=30))
+    return "\n".join(parts)
+
+
+schema_str = describe_schema(DB_PATH)
+print(schema_str[:1500] + "\n...")  # tronqué pour lisibilité
+```
+
+## 5. Génération SQL par le LLM
+
+On utilise **Pydantic structured output** d'OpenAI : on déclare un schéma de sortie, le LLM
+renvoie un JSON conforme. Bénéfice : pas de regex pour extraire le SQL d'une réponse libre,
+et on peut demander un champ `reasoning` séparé pour debugger.
+
+Prompt système :
+1. **Rôle** : « tu es un expert SQLite »
+2. **Contrainte** : « SELECT uniquement, pas de DDL/DML »
+3. **Convention** : « guillemets doubles pour les noms avec espaces »
+4. **Bornage** : « LIMIT par défaut si la question demande des lignes »
+5. **Schéma + sample** (fourni dynamiquement)
+
+On utilise `gpt-4.1-mini` (cheap, rapide, structured output supporté). Anthropic
+marche pareil via tool-use.
+
+```{python}
+from pydantic import BaseModel, Field
+
+class SQLPlan(BaseModel):
+    reasoning: str = Field(description="Brief reasoning in French, 1-2 sentences.")
+    sql:       str = Field(description="Valid SQLite SELECT statement.")
+
+
+_SYSTEM = """You are a SQLite expert. Given a user question (often in French) and a table
+schema, produce a valid SQLite SELECT statement that answers the question.
+
+Rules:
+- SELECT only. Forbidden: INSERT, UPDATE, DELETE, DROP, ALTER, CREATE, ATTACH, PRAGMA.
+- Wrap column names with spaces or special characters in double quotes: "Total DD/PE 2025".
+- Default to LIMIT 100 if the question asks for rows without specifying a limit.
+- Use exact column names from the schema — never invent.
+- For text search, prefer LIKE with wildcards (%) and lower(...) for case-insensitive match.
+- For "top N" questions, ORDER BY ... DESC LIMIT N.
+- Reply with reasoning in French."""
+
+
+def nl_to_sql(question: str, schema: str, *, model: str = "gpt-4.1-mini") -> SQLPlan:
+    if not LLM_AVAILABLE:
+        # Fallback didactique : on renvoie un exemple statique pour montrer la forme
+        return SQLPlan(
+            reasoning="(no OPENAI_API_KEY — placeholder)",
+            sql='SELECT "Nom du site", "Total DD/PE 2025" FROM data ORDER BY "Total DD/PE 2025" DESC LIMIT 5',
+        )
+    from openai import OpenAI
+    client = OpenAI()
+    resp = client.beta.chat.completions.parse(
+        model=model,
+        messages=[
+            {"role": "system", "content": _SYSTEM + "\n\n" + schema},
+            {"role": "user",   "content": question},
+        ],
+        response_format=SQLPlan,
+        temperature=0,    # déterministe : même question → même SQL
+    )
+    return resp.choices[0].message.parsed
+
+
+# Démo
+demo_question = "Quels sont les 5 sites avec les plus gros capitaux DDPE ?"
+demo_plan = nl_to_sql(demo_question, schema_str)
+print("Reasoning :", demo_plan.reasoning)
+print("\nSQL :")
+print(demo_plan.sql)
+```
+
+## 6. Exécution sandboxée
+
+Trois garde-fous, dans cet ordre :
+
+1. **Validation statique** : la query est `SELECT`, pas de mots-clés interdits.
+2. **Connexion read-only** : `sqlite:file:...?mode=ro` rejette n'importe quelle écriture
+   même si le SQL avait passé la validation textuelle.
+3. **Timeout** (`PRAGMA busy_timeout`) au cas où la query est trop coûteuse — peu probable
+   sur 850 lignes mais bon réflexe pour quand le corpus grandit.
+
+```{python}
+_FORBIDDEN = ("drop", "delete", "insert", "update", "alter",
+              "create", "truncate", "attach", "detach", "pragma")
+
+def validate_sql(sql: str) -> None:
+    sql_lower = sql.lower()
+    if not re.match(r"^\s*select\b", sql_lower):
+        raise ValueError("Seul SELECT est autorisé.")
+    for kw in _FORBIDDEN:
+        if re.search(rf"\b{kw}\b", sql_lower):
+            raise ValueError(f"Mot-clé interdit : {kw}")
+    if sql.count(";") > 1:
+        raise ValueError("Une seule requête par appel.")
+
+
+def execute_sql_readonly(sql: str, db_path: Path, *, timeout_ms: int = 5000) -> pd.DataFrame:
+    validate_sql(sql)
+    uri = f"file:{db_path}?mode=ro"
+    with sqlite3.connect(uri, uri=True) as conn:
+        conn.execute(f"PRAGMA busy_timeout = {timeout_ms}")
+        result = pd.read_sql_query(sql, conn)
+    return result
+
+
+# Test sur le SQL généré ci-dessus
+result_df = execute_sql_readonly(demo_plan.sql, DB_PATH)
+print(f"Résultat : {len(result_df)} ligne(s)\n")
+print(result_df.to_string(max_colwidth=40))
+```
+
+## 7. Restitution en langage naturel
+
+Le DataFrame brut est parfait pour un dev, mais l'utilisateur veut une phrase. Second appel LLM,
+moins critique que le premier : on lui donne question, SQL exécutée, résultat (tronqué à 20 lignes),
+et on demande une synthèse en 2-3 phrases.
+
+Pourquoi pas un template Python ? On pourrait écrire des f-strings type *« Voici les {n} sites… »*
+mais ça force à coder un template par type de question. Le LLM gère naturellement la diversité.
+
+```{python}
+def summarize_result(question: str, sql: str, df: pd.DataFrame, *,
+                      model: str = "gpt-4.1-mini") -> str:
+    if not LLM_AVAILABLE:
+        return f"(no LLM) DataFrame de {len(df)} ligne(s). Aperçu :\n{df.head().to_string()}"
+    from openai import OpenAI
+    client = OpenAI()
+    user_msg = f"""Question : {question}
+
+SQL exécutée :
+{sql}
+
+Résultat ({len(df)} ligne(s), top 20) :
+{df.head(20).to_string()}
+
+Réponds en français, 2-3 phrases maximum. Donne la réponse concrète. Ne reformule pas le SQL."""
+    resp = client.chat.completions.create(
+        model=model,
+        messages=[{"role": "user", "content": user_msg}],
+        temperature=0.2,
+    )
+    return resp.choices[0].message.content.strip()
+
+
+answer = summarize_result(demo_question, demo_plan.sql, result_df)
+print(answer)
+```
+
+## 8. Orchestrateur — `answer_question`
+
+Toute la démarche dans une fonction qu'on peut appeler en boucle sur N questions.
+
+```{python}
+def answer_question(question: str, *, table: str = "data") -> dict:
+    schema = describe_schema(DB_PATH, table=table)
+    plan   = nl_to_sql(question, schema)
+    try:
+        df = execute_sql_readonly(plan.sql, DB_PATH)
+    except Exception as exc:
+        return {"question": question, "error": f"{type(exc).__name__}: {exc}",
+                "sql": plan.sql, "reasoning": plan.reasoning}
+    summary = summarize_result(question, plan.sql, df)
+    return {"question": question, "reasoning": plan.reasoning, "sql": plan.sql,
+            "n_rows": len(df), "df": df, "answer": summary}
+
+
+def show(out: dict) -> None:
+    print("─" * 90)
+    print(f"Q : {out['question']}")
+    print("─" * 90)
+    if "error" in out:
+        print(f"ERREUR : {out['error']}")
+        print(f"SQL    : {out['sql']}")
+        return
+    print(f"Reasoning : {out['reasoning']}")
+    print(f"SQL       : {out['sql']}")
+    print(f"Lignes    : {out['n_rows']}")
+    print(f"\nRéponse :")
+    print(out['answer'])
+```
+
+## 9. Tests sur 5 questions variées
+
+Couvre les patterns courants : comptage, top-N, filtre+tri, agrégation, recherche LIKE.
+
+```{python}
+QUESTIONS = [
+    "Combien y a-t-il de sites au total dans le portefeuille ?",
+    "Quels sont les 5 sites avec les plus gros capitaux DDPE en 2025 ?",
+    "Donne-moi les 3 plus gros sites en termes de DD seul, filtré sur Pays = FRANCE.",
+    "Quel est le nombre de sites par pays ?",
+    "Quels sites sont situés à La Réunion (code postal commençant par 974) ?",
+]
+
+for q in QUESTIONS:
+    show(answer_question(q))
+    print()
+```
+
+## 10. Limites et extensions
+
+Ce qui marche bien dans ce design :
+
+- **Une fonction unique** côté dev. Toute la diversité des questions est absorbée par le LLM.
+- **Auditabilité** : le SQL généré est lisible, on peut le logger / le montrer à l'utilisateur.
+- **Coût maîtrisé** : 2 appels LLM par question (gen SQL + synthèse), ~1-2 k tokens chacun.
+- **Sandboxing trivial** : SQLite read-only ferme la classe entière des injections destructrices.
+
+Ce qui ne marche pas hors du périmètre prévu :
+
+- **Une question ambiguë** (« le plus gros »  → plus gros quoi ?) : le LLM va deviner. Soit
+  on accepte (et on affiche le `reasoning`), soit on ajoute une couche de clarification.
+- **Plusieurs tables / jointures** : ici on a une seule table, c'est facile. Avec N tables
+  il faut détailler le schéma de chacune et donner les FK au LLM (et ses performances
+  baissent).
+- **Colonnes mal nommées dans l'Excel original** (`Unnamed: 12`, `colonne 1`) : le LLM ne
+  sait pas deviner. Solution : ajouter une couche de renommage manuel ou de détection
+  sémantique des colonnes en amont.
+- **Hallucination de colonne** : le LLM peut générer `WHERE "Country" = 'FR'` alors que la
+  colonne s'appelle `"Pays"`. La validation actuelle laisse passer (la query plante à
+  l'exécution). Extension : pré-valider chaque identifiant SQL contre la liste de
+  colonnes connues avant d'exécuter, et boucler avec le LLM pour corriger.
+- **Très gros corpus** (>1M lignes) : SQLite tient sans souci, le bottleneck devient le
+  prompt du LLM (schéma + sample). À ce stade, switch vers DuckDB et un schema descriptor
+  généré dynamiquement (sans les samples si trop gros).
+
+Extensions naturelles, par ordre d'effort croissant :
+
+1. **Cache** : hash(question, db_hash) → SQL+result. Évite de recalculer si la question est
+   posée 2 fois.
+2. **Auto-correction** : si l'exécution échoue, on renvoie l'erreur au LLM avec le SQL
+   défectueux et on lui demande de corriger (1-2 itérations max).
+3. **Multi-fichier / multi-table** : on ingère N fichiers dans la même base SQLite, on
+   donne le schéma de chaque table au LLM.
+4. **Visualisation** : si le résultat a 2 colonnes numériques, génération automatique d'un
+   matplotlib plot. Si c'est un agrégat par catégorie, bar chart.
+5. **Couche conversationnelle** : on garde l'historique de la session, l'utilisateur peut
+   dire *« et maintenant uniquement à La Réunion »* — le LLM combine avec la question
+   précédente.
