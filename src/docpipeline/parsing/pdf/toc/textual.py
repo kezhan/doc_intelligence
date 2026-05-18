@@ -16,6 +16,7 @@ import fitz  # PyMuPDF
 import pandas as pd
 
 from ._utils import add_toc_metadata, compute_page_offset, normalize_toc_schema
+from .models import empty_toc_df, validate_toc_df
 
 
 # ── 1. Lignes pointillées ─────────────────────────────────────────────────────
@@ -56,9 +57,13 @@ def extract_toc_dotted(pdf_path: str | Path) -> pd.DataFrame:
         toc_entries,
         columns=["text", "page_num_displayed", "source_page"],
     )
+    if toc_df.empty:
+        return empty_toc_df()
     toc_df = compute_page_offset(toc_df, page_texts)
     toc_df = add_toc_metadata(toc_df)
-    return normalize_toc_schema(toc_df, source="dotted", validated_default=False)
+    normalized_df = normalize_toc_schema(toc_df, source="dotted", validated_default=False)
+    validate_toc_df(normalized_df)
+    return normalized_df
 
 
 # ── 2. Extraction multiline ───────────────────────────────────────────────────
@@ -127,9 +132,13 @@ def extract_toc_multiline(pdf_path: str | Path) -> pd.DataFrame:
         toc_entries,
         columns=["text", "page_num_displayed", "source_page"],
     )
+    if toc_df.empty:
+        return empty_toc_df()
     toc_df = compute_page_offset(toc_df, page_texts)
     toc_df = add_toc_metadata(toc_df)
-    return normalize_toc_schema(toc_df, source="multiline", validated_default=False)
+    normalized_df = normalize_toc_schema(toc_df, source="multiline", validated_default=False)
+    validate_toc_df(normalized_df)
+    return normalized_df
 
 
 # ── 3. Titraille par style ────────────────────────────────────────────────────

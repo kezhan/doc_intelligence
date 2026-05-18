@@ -10,12 +10,15 @@ import pytest
 from docpipeline.parsing.pdf.toc import (
     PDFReadError,
     TocDetectionResult,
+    SOURCE_NATIVE,
+    empty_toc_df,
     clean_toc_df,
     detect_toc,
     find_dotted_leader_lines,
     group_numbered_titles,
     has_toc_keyword,
     normalize_text,
+    validate_toc_df,
     score_page,
 )
 from docpipeline.parsing.pdf.toc._utils import (
@@ -239,3 +242,30 @@ def test_normalise_bookmark_dataframe_accepts_page_num_real_schema() -> None:
 
 def test_normalize_text_collapses_case_punctuation_and_spacing() -> None:
     assert normalize_text("  Table-des\u00a0mati\u00e8res!  ") == "table des matières"
+
+
+def test_empty_toc_df_matches_expected_schema() -> None:
+    df = empty_toc_df()
+
+    assert df.empty is True
+    assert ["text", "level", "indicator", "page_num_displayed", "page_num_real", "page_end", "source_page", "source", "validated", "page_num", "title", "page"] == list(df.columns)
+    assert validate_toc_df(
+        pd.DataFrame(
+            {
+                "text": pd.Series(["Intro"], dtype="object"),
+                "level": pd.Series([1], dtype="int64"),
+                "indicator": pd.Series(["L1"], dtype="object"),
+                "page_num_displayed": pd.Series([pd.NA], dtype="Int64"),
+                "page_num_real": pd.Series([3], dtype="int64"),
+                "page_end": pd.Series([pd.NA], dtype="Int64"),
+                "source_page": pd.Series([pd.NA], dtype="Int64"),
+                "source": pd.Series([SOURCE_NATIVE], dtype="object"),
+                "validated": pd.Series([True], dtype="bool"),
+            }
+        )
+    )
+
+
+def test_validate_toc_df_rejects_missing_schema_columns() -> None:
+    with pytest.raises(ValueError, match="missing required columns"):
+        validate_toc_df(pd.DataFrame([{"text": "Intro"}]))

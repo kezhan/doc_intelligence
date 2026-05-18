@@ -15,6 +15,7 @@ import fitz  # PyMuPDF
 import pandas as pd
 
 from ._utils import add_toc_metadata, normalize_toc_schema
+from .models import empty_toc_df, validate_toc_df
 
 
 _CLEAN_LEADING_NUMBERS_RE = re.compile(r"^\s*\d+[.\)]*\s*")
@@ -65,9 +66,14 @@ def extract_toc_from_links(
                                 "source_page": i + 1,
                                 "validated": True,
                             })
+    if not toc_entries:
+        return empty_toc_df()
+
     toc_df = pd.DataFrame(toc_entries, columns=["text", "page_num_real", "source_page", "validated"])
     toc_df = add_toc_metadata(toc_df)
-    return normalize_toc_schema(toc_df, source="links", validated_default=True)
+    normalized_df = normalize_toc_schema(toc_df, source="links", validated_default=True)
+    validate_toc_df(normalized_df)
+    return normalized_df
 
 
 def extract_toc_by_numbering(
@@ -108,9 +114,13 @@ def extract_toc_by_numbering(
                                 "page_num_displayed": int(match.group(2)),
                                 "source_page": i + 1,
                             })
+    if not toc_entries:
+        return empty_toc_df()
+
     toc_df = pd.DataFrame(toc_entries, columns=["text", "page_num_displayed", "source_page"])
-    if not toc_df.empty:
-        # Sans ancrage de lien interne, on suppose l'égalité affichée/réelle.
-        toc_df["page_num_real"] = toc_df["page_num_displayed"]
+    # Sans ancrage de lien interne, on suppose l'égalité affichée/réelle.
+    toc_df["page_num_real"] = toc_df["page_num_displayed"]
     toc_df = add_toc_metadata(toc_df)
-    return normalize_toc_schema(toc_df, source="numbering", validated_default=False)
+    normalized_df = normalize_toc_schema(toc_df, source="numbering", validated_default=False)
+    validate_toc_df(normalized_df)
+    return normalized_df

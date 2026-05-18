@@ -10,6 +10,7 @@ import fitz  # PyMuPDF
 import pandas as pd
 
 from ._utils import add_page_end_column, add_toc_metadata, normalize_toc_schema
+from .models import empty_toc_df, validate_toc_df
 
 
 # ── Détection ─────────────────────────────────────────────────────────────────
@@ -71,16 +72,14 @@ def extract_native_toc(pdf_path: str | Path) -> pd.DataFrame:
         toc_raw = doc.get_toc()
 
     if not toc_raw:
-        return normalize_toc_schema(
-            pd.DataFrame(columns=["text", "page_num_real"]),
-            source="native",
-            validated_default=True,
-        )
+        return empty_toc_df()
 
     toc_df = pd.DataFrame(toc_raw, columns=["level", "title", "page"])
     cleaned_df = clean_toc_df(toc_df)
     cleaned_df["page_num_real"] = cleaned_df["page"].astype("Int64")
-    return normalize_toc_schema(cleaned_df, source="native", validated_default=True)
+    normalized_df = normalize_toc_schema(cleaned_df, source="native", validated_default=True)
+    validate_toc_df(normalized_df)
+    return normalized_df
 
 
 def extract_native_toc_detailed(pdf_path: str | Path) -> pd.DataFrame:

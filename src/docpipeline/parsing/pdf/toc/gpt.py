@@ -40,6 +40,7 @@ import fitz  # PyMuPDF — conservé pour find_toc_pages / extract_raw_toc_text
 import pandas as pd
 
 from ._utils import compute_page_offset
+from .models import empty_toc_df, validate_toc_df
 from .patterns import TOC_KEYWORDS
 from .reader import DEFAULT_MAX_PAGES, extract_text_from_first_pages
 
@@ -206,17 +207,13 @@ def extract_toc_with_gpt(
     Output : DataFrame colonnes [level, title, page_num_displayed, page_num_real, page_num]
              — vide (0 lignes) si le LLM ne trouve pas de TOC ou en cas d'échec
     """
-    empty_df = pd.DataFrame(
-        columns=["level", "title", "page_num_displayed", "page_num_real", "page_num"]
-    )
-
     pages = extract_text_from_first_pages(pdf_path, max_pages=max_pages)
     raw_text = "\n\n--- page break ---\n\n".join(
         p["text"] for p in pages if p["text"].strip()
     )
 
     if not raw_text.strip():
-        return empty_df
+        return empty_toc_df()
 
     try:
         entries = _extract_structured_with_openai(
@@ -226,10 +223,10 @@ def extract_toc_with_gpt(
             custom_prompt=custom_prompt,
         )
     except Exception:
-        return empty_df
+        return empty_toc_df()
 
     if not entries:
-        return empty_df
+        return empty_toc_df()
 
     toc_df = pd.DataFrame(entries).rename(columns={"page_num": "page_num_displayed"})
 
@@ -253,4 +250,8 @@ def extract_toc_with_gpt(
         ).astype("Int64")
 
     toc_df["page_num"] = toc_df["page_num_real"]
-    return toc_df.sort_values("page_num_real").reset_index(drop=True)
+    toc_df["source"] = "style"
+    toc_df["validated"] = bool(toc_df.get("page_offset", 0).ne(0).any() if "page_offset" in toc_df.columns else False)
+    normalized_df = toc_df.sort_values("page_num_real").reset_index(drop=True)
+    validate_toc_df(normalized_df)
+    return normalized_df

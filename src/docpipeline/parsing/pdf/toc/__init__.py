@@ -21,7 +21,18 @@ from .detector import detect_toc
 from .exceptions import EmptyPDFError, InvalidPDFError, PDFReadError
 from .gpt import extract_raw_toc_text, extract_toc_with_gpt, find_toc_pages
 from .links import extract_toc_by_numbering, extract_toc_from_links
-from .models import PageAnalysis, TocDetectionResult
+from .models import (
+    PageAnalysis,
+    TocDetectionResult,
+    SOURCE_DOTTED,
+    SOURCE_LINKS,
+    SOURCE_MULTILINE,
+    SOURCE_NATIVE,
+    SOURCE_NUMBERING,
+    SOURCE_STYLE,
+    empty_toc_df,
+    validate_toc_df,
+)
 from .native import (
     clean_toc_df,
     export_toc_to_excel,
@@ -55,6 +66,14 @@ __all__ = [
     "detect_toc",
     "TocDetectionResult",
     "PageAnalysis",
+    "SOURCE_NATIVE",
+    "SOURCE_LINKS",
+    "SOURCE_DOTTED",
+    "SOURCE_MULTILINE",
+    "SOURCE_NUMBERING",
+    "SOURCE_STYLE",
+    "empty_toc_df",
+    "validate_toc_df",
     "PDFReadError",
     "InvalidPDFError",
     "EmptyPDFError",
